@@ -2,8 +2,26 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import CloudyAvatar from './CloudyAvatar'
 
-type Repository = { fullName: string; description: string; topics: string[]; language: string | null; defaultBranch: string; license: string; stars: number; openIssues: number; readme: string; assets: string[] }
-type Scene = { id: number; title: string; duration: number; narration: string; visual: string; bullets: string[] }
+type Repository = {
+  fullName: string
+  description: string
+  topics: string[]
+  language: string | null
+  defaultBranch: string
+  license: string
+  stars: number
+  openIssues: number
+  readme: string
+  assets: string[]
+}
+type Scene = {
+  id: number
+  title: string
+  duration: number
+  narration: string
+  visual: string
+  bullets: string[]
+}
 
 const starterRepository = 'https://github.com/Cloud2BR-TEC/ai-academy-101-ml'
 const projectKey = 'cloudy-video-project'
@@ -19,10 +37,13 @@ function extractBullets(narration: string): string[] {
   return narration
     .replace(/([.!?])\s+/g, '$1\n')
     .split('\n')
-    .map(s => s.trim())
-    .filter(s => s.length > 18 && s.length < 170)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 18 && s.length < 170)
     .slice(0, 4)
-    .map(s => { const words = s.split(/\s+/); return words.length > 15 ? words.slice(0, 15).join(' ') + '\u2026' : s })
+    .map((s) => {
+      const words = s.split(/\s+/)
+      return words.length > 15 ? words.slice(0, 15).join(' ') + '\u2026' : s
+    })
 }
 
 const STARTER_NARRATIONS = [
@@ -46,13 +67,23 @@ function parseRepositoryUrl(value: string) {
     const url = new URL(value.trim())
     const segments = url.pathname.replace(/^\/+|\/+$/g, '').split('/')
     return url.hostname === 'github.com' && segments.length === 2 && segments[0] && segments[1] ? { owner: segments[0], repo: segments[1].replace(/\.git$/, '') } : null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
-function durationLabel(seconds: number) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` }
-function timestamp(seconds: number) { return `00:${durationLabel(seconds)}.000` }
-function decodeBase64(value: string) { return new TextDecoder().decode(Uint8Array.from(atob(value.replace(/\s/g, '')), (character) => character.charCodeAt(0))) }
-function isIllustrativeImage(url: string) { return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url) && !/badge|shields\.io|badgen|coveralls|travis-ci|circleci|codecov/i.test(url) }
+function durationLabel(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+function timestamp(seconds: number) {
+  return `00:${durationLabel(seconds)}.000`
+}
+function decodeBase64(value: string) {
+  return new TextDecoder().decode(Uint8Array.from(atob(value.replace(/\s/g, '')), (character) => character.charCodeAt(0)))
+}
+function isIllustrativeImage(url: string) {
+  return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url) && !/badge|shields\.io|badgen|coveralls|travis-ci|circleci|codecov/i.test(url)
+}
 function extractReadmeImageUrls(markdown: string, owner: string, repo: string, branch: string) {
   const urls = new Set<string>()
   const patterns = [/!\[[^\]]*\]\(([^)\s]+)/g, /<img[^>]*src=["']([^"']+)["']/gi]
@@ -73,42 +104,39 @@ function parseReadmeSections(readme: string): Array<{ heading: string; body: str
   let bodyLines: string[] = []
   const flush = () => {
     const body = bodyLines
-      .map(l => l.replace(/^[>\-*+]\s*/, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_#`|!\[\]()]/g, ' ').trim())
-      .filter(l => l.length > 4 && !/^https?:\/\//i.test(l))
-      .join(' ').replace(/\s+/g, ' ').trim()
+      .map((l) =>
+        l
+          .replace(/^[>\-*+]\s*/, '')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[*_#`|!\[\]()]/g, ' ')
+          .trim(),
+      )
+      .filter((l) => l.length > 4 && !/^https?:\/\//i.test(l))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
     if (body.length > 15) sections.push({ heading, body })
     bodyLines = []
   }
   for (const line of lines) {
     const h = line.match(/^#{1,4}\s+(.+)/)
-    if (h) { flush(); heading = h[1].replace(/[*_`#]/g, '').trim() } else { bodyLines.push(line) }
+    if (h) {
+      flush()
+      heading = h[1].replace(/[*_`#]/g, '').trim()
+    } else {
+      bodyLines.push(line)
+    }
   }
   flush()
   return sections
 }
 function isSceneCollection(value: unknown): value is Scene[] {
-  return Array.isArray(value) && value.length > 0 && value.every((scene) =>
-    typeof scene === 'object' && scene !== null &&
-    typeof scene.id === 'number' &&
-    typeof scene.title === 'string' &&
-    typeof scene.duration === 'number' &&
-    typeof scene.narration === 'string' &&
-    typeof scene.visual === 'string',
-  )
+  return Array.isArray(value) && value.length > 0 && value.every((scene) => typeof scene === 'object' && scene !== null && typeof scene.id === 'number' && typeof scene.title === 'string' && typeof scene.duration === 'number' && typeof scene.narration === 'string' && typeof scene.visual === 'string')
 }
 function isRepository(value: unknown): value is Repository {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.fullName === 'string' &&
-    typeof record.description === 'string' &&
-    Array.isArray(record.topics) && record.topics.every((topic) => typeof topic === 'string') &&
-    (typeof record.language === 'string' || record.language === null) &&
-    typeof record.defaultBranch === 'string' &&
-    typeof record.license === 'string' &&
-    typeof record.stars === 'number' &&
-    typeof record.openIssues === 'number' &&
-    typeof record.readme === 'string' &&
-    Array.isArray(record.assets) && record.assets.every((asset) => typeof asset === 'string')
+  return typeof record.fullName === 'string' && typeof record.description === 'string' && Array.isArray(record.topics) && record.topics.every((topic) => typeof topic === 'string') && (typeof record.language === 'string' || record.language === null) && typeof record.defaultBranch === 'string' && typeof record.license === 'string' && typeof record.stars === 'number' && typeof record.openIssues === 'number' && typeof record.readme === 'string' && Array.isArray(record.assets) && record.assets.every((asset) => typeof asset === 'string')
 }
 function downloadFile(name: string, contents: string, type: string) {
   const url = URL.createObjectURL(new Blob([contents], { type }))
@@ -143,7 +171,11 @@ function loadImage(src: string) {
   })
 }
 function splitIntoSlides(text: string, targetWords: number): string[] {
-  const sentences = text.trim().replace(/([.!?])\s+/g, '$1\n').split('\n').filter(s => s.trim().length > 8)
+  const sentences = text
+    .trim()
+    .replace(/([.!?])\s+/g, '$1\n')
+    .split('\n')
+    .filter((s) => s.trim().length > 8)
   const slides: string[] = []
   let current: string[] = []
   let count = 0
@@ -159,13 +191,12 @@ function splitIntoSlides(text: string, targetWords: number): string[] {
     }
   }
   if (current.length) slides.push(current.join(' '))
-  return slides.filter(s => s.trim().split(/\s+/).length > 8)
+  return slides.filter((s) => s.trim().split(/\s+/).length > 8)
 }
 function buildScenes(repo: Repository): Scene[] {
   const subject = repo.fullName.split('/')[1].replaceAll('-', ' ')
   const sections = parseReadmeSections(repo.readme)
-  const find = (pattern: RegExp) =>
-    sections.find(s => pattern.test(s.heading) && s.body.trim().split(/\s+/).length > 8)?.body ?? ''
+  const find = (pattern: RegExp) => sections.find((s) => pattern.test(s.heading) && s.body.trim().split(/\s+/).length > 8)?.body ?? ''
   const fallback = (idx: number) => sections[idx]?.body ?? ''
   const MAX = 800
   const WORDS_PER_SLIDE = 130
@@ -174,12 +205,7 @@ function buildScenes(repo: Repository): Scene[] {
     {
       baseTitle: `Meet ${subject}`,
       visual: 'Repository cover and Cloudy host',
-      text: limitWords([
-        repo.description ?? '',
-        repo.language ? `Built with ${repo.language}.` : '',
-        repo.topics.length ? `Topics: ${repo.topics.slice(0, 4).join(', ')}.` : '',
-        fallback(0),
-      ].filter(Boolean).join(' '), MAX),
+      text: limitWords([repo.description ?? '', repo.language ? `Built with ${repo.language}.` : '', repo.topics.length ? `Topics: ${repo.topics.slice(0, 4).join(', ')}.` : '', fallback(0)].filter(Boolean).join(' '), MAX),
     },
     {
       baseTitle: 'What you will learn',
@@ -210,7 +236,14 @@ function buildScenes(repo: Repository): Scene[] {
     const all = slides.length ? slides : [group.text || group.baseTitle]
     all.forEach((narration, i) => {
       const title = all.length > 1 ? `${group.baseTitle} – Part ${i + 1}` : group.baseTitle
-      result.push({ id: id++, title, duration: wordsToSeconds(narration), narration, visual: group.visual, bullets: extractBullets(narration) })
+      result.push({
+        id: id++,
+        title,
+        duration: wordsToSeconds(narration),
+        narration,
+        visual: group.visual,
+        bullets: extractBullets(narration),
+      })
     })
   }
   return result
@@ -232,7 +265,6 @@ function App() {
   const [isSaved, setIsSaved] = useState(false)
   const [isRenderingVideo, setIsRenderingVideo] = useState(false)
   const [renderProgress, setRenderProgress] = useState(0)
-  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [previewImageIndex, setPreviewImageIndex] = useState(0)
   const [isVideoPreviewPlaying, setIsVideoPreviewPlaying] = useState(false)
@@ -244,12 +276,16 @@ function App() {
   const selectedSceneIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
   const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
-  const apiHeaders: Record<string, string> = { Accept: 'application/vnd.github+json' }
+  const apiHeaders: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+  }
   const imgsPerScene = repository?.assets.length ? Math.max(1, Math.ceil(repository.assets.length / scenes.length)) : 1
   const videoPreviewScene = scenes[videoPreviewSceneIdx] ?? scenes[0]
   const videoPreviewAsset = repository?.assets.length ? (repository.assets.slice(videoPreviewSceneIdx * imgsPerScene, videoPreviewSceneIdx * imgsPerScene + imgsPerScene)[0] ?? null) : null
   const sceneImages = repository?.assets.length ? repository.assets.slice(selectedSceneIndex * imgsPerScene, selectedSceneIndex * imgsPerScene + imgsPerScene) : []
   const previewAsset = sceneImages.length ? sceneImages[previewImageIndex % sceneImages.length] : null
+  const presentedScene = isVideoPreviewPlaying ? videoPreviewScene : selectedScene
+  const presentedAsset = isVideoPreviewPlaying ? videoPreviewAsset : previewAsset
 
   useEffect(() => {
     try {
@@ -257,29 +293,31 @@ function App() {
       if (!savedProject) return
       const project = JSON.parse(savedProject) as unknown
       if (typeof project !== 'object' || project === null) throw new Error('Invalid saved project')
-      const saved = project as { repositoryUrl?: unknown; repository?: unknown; scenes?: unknown }
+      const saved = project as {
+        repositoryUrl?: unknown
+        repository?: unknown
+        scenes?: unknown
+      }
       if (typeof saved.repositoryUrl === 'string') setRepositoryUrl(saved.repositoryUrl)
       if (isRepository(saved.repository)) setRepository(saved.repository)
       const savedScenes = saved.scenes
       if (isSceneCollection(savedScenes)) {
-        setScenes(savedScenes.map(s => ({ ...s, bullets: s.bullets?.length ? s.bullets : extractBullets(s.narration) })))
+        setScenes(
+          savedScenes.map((s) => ({
+            ...s,
+            bullets: s.bullets?.length ? s.bullets : extractBullets(s.narration),
+          })),
+        )
         setIsSaved(true)
       }
-    } catch { window.localStorage.removeItem(projectKey) }
+    } catch {
+      window.localStorage.removeItem(projectKey)
+    }
   }, [])
 
   useEffect(() => {
-    if (!isPreviewPlaying) return
-    const interval = window.setInterval(() => {
-      setSelectedSceneId((currentId) => {
-        const currentIndex = scenes.findIndex((scene) => scene.id === currentId)
-        return scenes[(currentIndex + 1) % scenes.length].id
-      })
-    }, 6_000)
-    return () => window.clearInterval(interval)
-  }, [isPreviewPlaying, scenes])
-
-  useEffect(() => { setPreviewImageIndex(0) }, [selectedSceneId])
+    setPreviewImageIndex(0)
+  }, [selectedSceneId])
 
   useEffect(() => {
     if (sceneImages.length < 2) return
@@ -291,55 +329,127 @@ function App() {
 
   async function loadRepository(value: string) {
     const parsed = parseRepositoryUrl(value)
-    if (!parsed) { setStatus('Use a canonical URL such as https://github.com/owner/repository.'); return }
+    if (!parsed) {
+      setStatus('Use a canonical URL such as https://github.com/owner/repository.')
+      return
+    }
     setIsLoading(true)
     setStatus('Reviewing the repository README, folders, and images...')
     try {
       const [repositoryResponse, readmeResponse, contentsResponse] = await Promise.all([
-        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers: apiHeaders }),
+        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
+          headers: apiHeaders,
+        }),
         fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/readme`, { headers: apiHeaders }),
         fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents`, { headers: apiHeaders }),
       ])
       if (!repositoryResponse.ok) throw new Error('Repository unavailable')
-      const data = await repositoryResponse.json() as { full_name: string; description: string | null; topics: string[]; language: string | null; default_branch: string; license: { spdx_id: string } | null; stargazers_count: number; open_issues_count: number }
-      const readmeData = readmeResponse.ok ? await readmeResponse.json() as { content?: string } : null
+      const data = (await repositoryResponse.json()) as {
+        full_name: string
+        description: string | null
+        topics: string[]
+        language: string | null
+        default_branch: string
+        license: { spdx_id: string } | null
+        stargazers_count: number
+        open_issues_count: number
+      }
+      const readmeData = readmeResponse.ok ? ((await readmeResponse.json()) as { content?: string }) : null
       const readmeText = readmeData?.content ? decodeBase64(readmeData.content) : ''
-      const sourceFiles = contentsResponse.ok ? await contentsResponse.json() as Array<{ name: string; type: string; download_url: string | null }> : []
+      const sourceFiles = contentsResponse.ok
+        ? ((await contentsResponse.json()) as Array<{
+            name: string
+            type: string
+            download_url: string | null
+          }>)
+        : []
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
       const rootImages = sourceFiles.filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name)).map((file) => file.download_url as string)
       const assetFolders = sourceFiles.filter((file) => file.type === 'dir' && /^(assets|images|img|media|docs|screenshots|figures|resources|\.github)$/i.test(file.name)).slice(0, 4)
-      const folderListings = await Promise.all(assetFolders.map((folder) =>
-        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${folder.name}`, { headers: apiHeaders })
-          .then((response) => response.ok ? response.json() as Promise<Array<{ type: string; name: string; download_url: string | null; path: string }>> : [])
-          .catch(() => [])
-      ))
-      const folderImages = folderListings.flat()
+      const folderListings = await Promise.all(
+        assetFolders.map((folder) =>
+          fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${folder.name}`, { headers: apiHeaders })
+            .then((response) =>
+              response.ok
+                ? (response.json() as Promise<
+                    Array<{
+                      type: string
+                      name: string
+                      download_url: string | null
+                      path: string
+                    }>
+                  >)
+                : [],
+            )
+            .catch(() => []),
+        ),
+      )
+      const folderImages = folderListings
+        .flat()
         .filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name))
         .map((file) => file.download_url as string)
       const assets = Array.from(new Set([...readmeImages, ...folderImages, ...rootImages])).slice(0, 12)
-      const newRepo: Repository = { fullName: data.full_name, description: data.description ?? 'No repository description was provided.', topics: data.topics ?? [], language: data.language, defaultBranch: data.default_branch, license: data.license?.spdx_id ?? 'No license detected', stars: data.stargazers_count, openIssues: data.open_issues_count, readme: readmeText, assets }
+      const newRepo: Repository = {
+        fullName: data.full_name,
+        description: data.description ?? 'No repository description was provided.',
+        topics: data.topics ?? [],
+        language: data.language,
+        defaultBranch: data.default_branch,
+        license: data.license?.spdx_id ?? 'No license detected',
+        stars: data.stargazers_count,
+        openIssues: data.open_issues_count,
+        readme: readmeText,
+        assets,
+      }
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
       setScenes(buildScenes(newRepo))
       const imageNote = assets.length ? `Found ${assets.length} image${assets.length === 1 ? '' : 's'} from the repository.` : 'No images found — Cloudy will present with a branded placeholder.'
       setStatus(`Storyboard ready. ${imageNote}`)
       setIsSaved(false)
-    } catch { setRepository(null); setStatus('The repository could not be read. Check repository access and try again.') }
-    finally { setIsLoading(false) }
+    } catch {
+      setRepository(null)
+      setStatus('The repository could not be read. Check repository access and try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   function updateScene(field: 'title' | 'narration', value: string) {
-    setScenes((current) => current.map((scene) => {
-      if (scene.id !== selectedScene.id) return scene
-      const updated = { ...scene, [field]: value }
-      if (field === 'narration') { updated.duration = wordsToSeconds(value); updated.bullets = extractBullets(value) }
-      return updated
-    }))
+    setScenes((current) =>
+      current.map((scene) => {
+        if (scene.id !== selectedScene.id) return scene
+        const updated = { ...scene, [field]: value }
+        if (field === 'narration') {
+          updated.duration = wordsToSeconds(value)
+          updated.bullets = extractBullets(value)
+        }
+        return updated
+      }),
+    )
     setIsSaved(false)
   }
-  function saveProject() { window.localStorage.setItem(projectKey, JSON.stringify({ repositoryUrl, repository, scenes })); setIsSaved(true); setStatus('Project saved only in this browser.') }
-  function exportProject() { downloadFile('cloudy-video-project.json', JSON.stringify({ repositoryUrl, repository, scenes }, null, 2), 'application/json'); setStatus('Project JSON downloaded.') }
-  function exportCaptions() { let cursor = 0; const content = scenes.map((scene, index) => { const start = timestamp(cursor); cursor += scene.duration; return `${index + 1}\n${start} --> ${timestamp(cursor)}\n${scene.narration}` }).join('\n\n'); downloadFile('cloudy-captions.srt', content, 'application/x-subrip'); setStatus('Editable SRT captions downloaded.') }
+  function saveProject() {
+    window.localStorage.setItem(projectKey, JSON.stringify({ repositoryUrl, repository, scenes }))
+    setIsSaved(true)
+    setStatus('Project saved only in this browser.')
+  }
+  function exportProject() {
+    downloadFile('cloudy-video-project.json', JSON.stringify({ repositoryUrl, repository, scenes }, null, 2), 'application/json')
+    setStatus('Project JSON downloaded.')
+  }
+  function exportCaptions() {
+    let cursor = 0
+    const content = scenes
+      .map((scene, index) => {
+        const start = timestamp(cursor)
+        cursor += scene.duration
+        return `${index + 1}\n${start} --> ${timestamp(cursor)}\n${scene.narration}`
+      })
+      .join('\n\n')
+    downloadFile('cloudy-captions.srt', content, 'application/x-subrip')
+    setStatus('Editable SRT captions downloaded.')
+  }
   async function exportVideo() {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
       setStatus('This browser cannot create a video file. Use a current Chromium browser.')
@@ -355,9 +465,14 @@ function App() {
     const cloudyImage = await loadImage(cloudyLogo).catch(() => null)
     const assetImages = repository?.assets.length ? await Promise.all(repository.assets.map((asset) => loadImage(asset).catch(() => null))) : []
     const stream = canvas.captureStream(30)
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 })
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 6_000_000,
+    })
     const chunks: BlobPart[] = []
-    recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data) })
+    recorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size) chunks.push(event.data)
+    })
     const videoReady = new Promise<Blob>((resolve) => recorder.addEventListener('stop', () => resolve(new Blob(chunks, { type: 'video/webm' })), { once: true }))
     const totalSeconds = scenes.reduce((total, scene) => total + scene.duration, 0)
     const startedAt = performance.now()
@@ -370,11 +485,15 @@ function App() {
     const drawFrame = (elapsedSeconds: number) => {
       let sceneOffset = 0
       let sceneIndex = scenes.length - 1
-      const scene = scenes.find((item, index) => {
-        sceneOffset += item.duration
-        if (elapsedSeconds < sceneOffset) { sceneIndex = index; return true }
-        return false
-      }) ?? scenes[scenes.length - 1]
+      const scene =
+        scenes.find((item, index) => {
+          sceneOffset += item.duration
+          if (elapsedSeconds < sceneOffset) {
+            sceneIndex = index
+            return true
+          }
+          return false
+        }) ?? scenes[scenes.length - 1]
       const sceneElapsed = elapsedSeconds - (sceneOffset - scene.duration)
       const sceneProgress = Math.min(1, sceneElapsed / scene.duration)
       const pulse = 0.5 + Math.sin(sceneElapsed * 1.2) * 0.5
@@ -474,7 +593,9 @@ function App() {
       context.fillText('CLOUDY IS SAYING:', 80, 906)
       context.fillStyle = '#ffffff'
       context.font = '400 30px Manrope, sans-serif'
-      wrapCanvasText(context, scene.narration, 1_750).slice(0, 3).forEach((line, index) => context.fillText(line, 80, 938 + index * 38))
+      wrapCanvasText(context, scene.narration, 1_750)
+        .slice(0, 3)
+        .forEach((line, index) => context.fillText(line, 80, 938 + index * 38))
 
       const bob = Math.sin(elapsedSeconds * 1.6) * 10
       const walkX = 1_725 + Math.sin(elapsedSeconds * 0.9) * 90
@@ -536,14 +657,15 @@ function App() {
     URL.revokeObjectURL(url)
     setStatus('WebM video downloaded. Captions are embedded on screen.')
   }
-  function cancelVideoExport() { renderAbortRef.current = true; setStatus('Stopping video render...') }
+  function cancelVideoExport() {
+    renderAbortRef.current = true
+    setStatus('Stopping video render...')
+  }
 
   function pickFemaleVoice() {
     const voices = window.speechSynthesis.getVoices()
     const femaleNames = /zira|samantha|victoria|ava|aria|hazel|susan|karen|moira|tessa|fiona|allison|erin|eva|vicki|joanna|ivy|kendra|kimberly|salli|nicole|naja|marlene|mathilde/i
-    const female = voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en'))
-      ?? voices.find((voice) => /female/i.test(voice.name))
-      ?? voices.find((voice) => voice.lang.startsWith('en-') && !/david|mark|james|alex|daniel|rishi|george|ryan/i.test(voice.name))
+    const female = voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en')) ?? voices.find((voice) => /female/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith('en-') && !/david|mark|james|alex|daniel|rishi|george|ryan/i.test(voice.name))
     return female ?? null
   }
 
@@ -602,8 +724,14 @@ function App() {
         utterance.rate = 0.95
         utterance.pitch = 1.1
         utterance.onstart = () => setIsSpeaking(true)
-        utterance.onend = () => { setIsSpeaking(false); resolve() }
-        utterance.onerror = () => { setIsSpeaking(false); resolve() }
+        utterance.onend = () => {
+          setIsSpeaking(false)
+          resolve()
+        }
+        utterance.onerror = () => {
+          setIsSpeaking(false)
+          resolve()
+        }
         window.speechSynthesis.speak(utterance)
       })
       if (!videoPreviewAbortRef.current && i < scenes.length - 1) {
@@ -624,16 +752,297 @@ function App() {
     setVideoPreviewSceneIdx(0)
   }
 
-  return <main className="app-shell">{isSpeaking && !isVideoPreviewPlaying ? <button className="secondary-button voice-button" type="button" onClick={stopVoice}>&#9646;&#9646; Stop voice</button> : <button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()} disabled={isVideoPreviewPlaying}>Preview female voice</button>}
-    <header className="topbar"><a className="brand" href="https://github.com/Cloud2BR-TEC/Cloudy-overview-videos" target="_blank" rel="noreferrer"><img src={cloudyLogo} alt="Cloudy" /><span><strong>Cloudy</strong><small>Repository Video Studio</small></span></a><div className="project-state"><span className={isSaved ? 'saved-dot' : 'unsaved-dot'}></span>{isSaved ? 'Saved locally' : 'Unsaved changes'}</div><button className="secondary-button" type="button" onClick={exportProject}>Download project setup</button><button className="primary-button" type="button" onClick={saveProject}>Save project</button></header>
-    <section className="workspace"><aside className="rail" aria-label="Project workflow"><div className="rail-item active"><span>01</span><strong>Source</strong></div><div className="rail-item"><span>02</span><strong>Story</strong></div><div className="rail-item"><span>03</span><strong>Voice</strong></div><div className="rail-item"><span>04</span><strong>Export</strong></div></aside><section className="content-column">
-      <div className="section-heading"><div><p className="eyebrow">Cloudy overview video</p><h1>Choose the repository Cloudy will explain.</h1></div><p className="status" aria-live="polite">{status}</p></div>
-      <section className="repository-form"><p className="eyebrow">Public repository</p><label htmlFor="repository-url">GitHub repository URL</label><div className="url-entry"><input id="repository-url" type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" /><button className="primary-button" type="button" onClick={() => void loadRepository(repositoryUrl)} disabled={isLoading}>{isLoading ? 'Reading...' : 'Generate explainer'}</button></div><p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p></section>
-      {repository && <section className="repository-card" aria-label="Repository source"><div className="repository-title"><div><p className="eyebrow">Source evidence</p><h2>{repository.fullName}</h2><p>{repository.description}</p></div></div><div className="metadata-grid"><span><small>Default branch</small>{repository.defaultBranch}</span><span><small>Primary language</small>{repository.language ?? 'Not detected'}</span><span><small>License</small>{repository.license}</span><span><small>Signals</small>{repository.stars} stars · {repository.openIssues} issues</span></div>{repository.assets.length > 0 && <div className="asset-strip">{repository.assets.map((asset) => <img key={asset} src={asset} alt="Repository source asset" />)}</div>}{repository.topics.length > 0 && <div className="tags">{repository.topics.slice(0, 6).map((topic) => <span key={topic}>{topic}</span>)}</div>}</section>}
-      {repository ? <section className="story-area"><div className="story-head"><div><p className="eyebrow">Storyboard</p><h2>Cloudy’s explainer</h2></div><div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>{durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small></div></div><div className="story-grid"><ol className="scene-list">{scenes.map((scene) => <li key={scene.id}><button type="button" className={scene.id === selectedScene.id ? 'scene selected' : 'scene'} onClick={() => { setIsPreviewPlaying(false); setSelectedSceneId(scene.id) }}><span className="scene-number">{String(scene.id).padStart(2, '0')}</span><span><strong>{scene.title}</strong><small>{scene.visual}</small></span><time>{durationLabel(scene.duration)}</time></button></li>)}</ol><article className="scene-editor"><div className={`slide-stage ${isPreviewPlaying ? 'is-playing' : ''}`}>{previewAsset && <img className="slide-bg" src={previewAsset} alt="" />}<div className="slide-left"><p className="slide-scene-label">Section {String(selectedScene.id).padStart(2,'0')} of {scenes.length}</p><h2 className="slide-title">{selectedScene.title}</h2><ul className="slide-bullets">{(selectedScene.bullets?.length ? selectedScene.bullets : extractBullets(selectedScene.narration)).map((bullet, i) => <li key={i}>{bullet}</li>)}</ul></div><div className="slide-right"><div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}><CloudyAvatar speaking={isSpeaking} size={84} /></div>{isSpeaking && <span className="talk-badge"><span className="talk-bars"><span></span><span></span><span></span></span>Cloudy is speaking</span>}</div><div className="slide-narration"><span className="slide-narration-label">Cloudy narration</span><p>{selectedScene.narration}</p></div></div><div className="preview-controls"><button className="secondary-button" type="button" onClick={() => setIsPreviewPlaying((playing) => !playing)}>{isPreviewPlaying ? 'Pause generated preview' : 'Play generated preview'}</button><span>{isPreviewPlaying ? 'Cloudy is moving through the storyboard.' : 'Play to preview Cloudy and the selected repository visuals.'}</span></div><div className="editor-fields"><label>Scene title<input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} /></label><label>Cloudy narration<textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} /></label><div className="duration-info"><span className="duration-info-label">Read time at 1× speed</span><span className="duration-info-value">{durationLabel(selectedScene.duration)}<small> ({selectedScene.narration.trim().split(/\s+/).filter(Boolean).length} words · {selectedScene.duration}s)</small></span></div><button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()}>Preview female voice</button></div></article></div></section> : <section className="story-placeholder"><p className="eyebrow">Storyboard</p><h2>Generate an explainer to begin</h2><p>Paste a public GitHub repository URL above and select <strong>Generate explainer</strong>. Cloudy will read the repository and build a live, editable storyboard here.</p></section>}
-      {repository && <section className="video-preview-section"><div className="video-preview-head"><div><p className="eyebrow">Full video preview</p><h2>Cloudy presents all sections with voice</h2></div><div className="video-preview-controls">{isVideoPreviewPlaying ? <button className="primary-button" type="button" onClick={stopVideoPreview}>Stop preview</button> : <button className="primary-button" type="button" onClick={() => void startVideoPreview()}>&#9654; Play full video with voice</button>}<span className="video-preview-hint">{isVideoPreviewPlaying ? `Scene ${videoPreviewSceneIdx + 1} of ${scenes.length} — Cloudy is presenting` : 'All sections play in order with the female voice reading each narration.'}</span></div></div><div className={`video-player-slide slide-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>{videoPreviewAsset && <img className="slide-bg" src={videoPreviewAsset} alt="" />}<div className="slide-left"><p className="slide-scene-label">Section {String(videoPreviewSceneIdx + 1).padStart(2,'0')} of {scenes.length}{isVideoPreviewPlaying ? ' · speaking…' : ''}</p><h2 className="slide-title">{videoPreviewScene.title}</h2><ul className="slide-bullets">{(videoPreviewScene.bullets?.length ? videoPreviewScene.bullets : extractBullets(videoPreviewScene.narration)).map((b,i) => <li key={i}>{b}</li>)}</ul></div><div className="slide-right"><div className={`slide-cloudy ${isVideoPreviewPlaying && isSpeaking ? 'speaking' : ''}`}><CloudyAvatar speaking={isVideoPreviewPlaying && isSpeaking} size={100} /></div>{isVideoPreviewPlaying && isSpeaking && <span className="talk-badge"><span className="talk-bars"><span></span><span></span><span></span></span>Speaking</span>}</div><div className="slide-narration"><span className="slide-narration-label">{isVideoPreviewPlaying ? 'Now reading' : 'Scene narration'}</span><p>{videoPreviewScene.narration}</p></div></div><div className="video-scene-progress">{scenes.map((scene, i) => <button key={scene.id} type="button" className={`vsp-dot ${i < videoPreviewSceneIdx ? 'done' : i === videoPreviewSceneIdx ? 'active' : ''}`} onClick={() => { if (!isVideoPreviewPlaying) setVideoPreviewSceneIdx(i) }} title={scene.title}>{String(i+1).padStart(2,'0')}</button>)}</div></section>}
-    </section>{repository ? <aside className="review-panel"><div><p className="eyebrow">Ready to export</p><h2>Local package</h2></div><ul className="checklist"><li className="done">Repository source captured</li><li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li><li className="done">Editable Cloudy narration</li><li className={repository.assets.length ? 'done' : ''}>Source visuals selected</li><li className="done">Captions ready to export</li></ul><div className="export-actions">{isRenderingVideo ? <button className="primary-button" type="button" onClick={cancelVideoExport}>Cancel video render {renderProgress}%</button> : <button className="primary-button" type="button" onClick={() => void exportVideo()}>Download video</button>}<button className="secondary-button" type="button" onClick={exportCaptions}>Download captions</button><button className="secondary-button" type="button" onClick={exportProject}>Download project setup</button></div></aside> : <aside className="review-panel placeholder"><div><p className="eyebrow">Ready to export</p><h2>Nothing to export yet</h2><p>Generate an explainer first. Export options for video, captions, and the project file appear once Cloudy has read a repository.</p></div></aside>}</section>
-  </main>
+  return (
+    <main className="app-shell">
+      {isSpeaking && !isVideoPreviewPlaying ? (
+        <button className="secondary-button voice-button" type="button" onClick={stopVoice}>
+          &#9646;&#9646; Stop voice
+        </button>
+      ) : (
+        <button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()} disabled={isVideoPreviewPlaying}>
+          Preview female voice
+        </button>
+      )}
+      <header className="topbar">
+        <a className="brand" href="https://github.com/Cloud2BR-TEC/Cloudy-overview-videos" target="_blank" rel="noreferrer">
+          <img src={cloudyLogo} alt="Cloudy" />
+          <span>
+            <strong>Cloudy</strong>
+            <small>Repository Video Studio</small>
+          </span>
+        </a>
+        <div className="project-state">
+          <span className={isSaved ? 'saved-dot' : 'unsaved-dot'}></span>
+          {isSaved ? 'Saved locally' : 'Unsaved changes'}
+        </div>
+        <button className="secondary-button" type="button" onClick={exportProject}>
+          Download project setup
+        </button>
+        <button className="primary-button" type="button" onClick={saveProject}>
+          Save project
+        </button>
+      </header>
+      <section className="workspace">
+        <aside className="rail" aria-label="Project workflow">
+          <div className="rail-item active">
+            <span>01</span>
+            <strong>Source</strong>
+          </div>
+          <div className="rail-item">
+            <span>02</span>
+            <strong>Story</strong>
+          </div>
+          <div className="rail-item">
+            <span>03</span>
+            <strong>Voice</strong>
+          </div>
+          <div className="rail-item">
+            <span>04</span>
+            <strong>Export</strong>
+          </div>
+        </aside>
+        <section className="content-column">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Cloudy overview video</p>
+              <h1>Choose the repository Cloudy will explain.</h1>
+            </div>
+            <p className="status" aria-live="polite">
+              {status}
+            </p>
+          </div>
+          <section className="repository-form">
+            <p className="eyebrow">Public repository</p>
+            <label htmlFor="repository-url">GitHub repository URL</label>
+            <div className="url-entry">
+              <input id="repository-url" type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" />
+              <button className="primary-button" type="button" onClick={() => void loadRepository(repositoryUrl)} disabled={isLoading}>
+                {isLoading ? 'Reading...' : 'Generate explainer'}
+              </button>
+            </div>
+            <p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p>
+          </section>
+          {repository && (
+            <section className="repository-card" aria-label="Repository source">
+              <div className="repository-title">
+                <div>
+                  <p className="eyebrow">Source evidence</p>
+                  <h2>{repository.fullName}</h2>
+                  <p>{repository.description}</p>
+                </div>
+              </div>
+              <div className="metadata-grid">
+                <span>
+                  <small>Default branch</small>
+                  {repository.defaultBranch}
+                </span>
+                <span>
+                  <small>Primary language</small>
+                  {repository.language ?? 'Not detected'}
+                </span>
+                <span>
+                  <small>License</small>
+                  {repository.license}
+                </span>
+                <span>
+                  <small>Signals</small>
+                  {repository.stars} stars · {repository.openIssues} issues
+                </span>
+              </div>
+              {repository.assets.length > 0 && (
+                <div className="asset-strip">
+                  {repository.assets.map((asset) => (
+                    <img key={asset} src={asset} alt="Repository source asset" />
+                  ))}
+                </div>
+              )}
+              {repository.topics.length > 0 && (
+                <div className="tags">
+                  {repository.topics.slice(0, 6).map((topic) => (
+                    <span key={topic}>{topic}</span>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+          {repository ? (
+            <section className="story-area">
+              <div className="story-head">
+                <div>
+                  <p className="eyebrow">Storyboard</p>
+                  <h2>Cloudy’s explainer</h2>
+                </div>
+                <div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>
+                  {durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small>
+                </div>
+              </div>
+              <div className="story-grid">
+                <ol className="scene-list">
+                  {scenes.map((scene) => (
+                    <li key={scene.id}>
+                      <button
+                        type="button"
+                        className={scene.id === selectedScene.id ? 'scene selected' : 'scene'}
+                        onClick={() => {
+                          setSelectedSceneId(scene.id)
+                        }}
+                      >
+                        <span className="scene-number">{String(scene.id).padStart(2, '0')}</span>
+                        <span>
+                          <strong>{scene.title}</strong>
+                          <small>{scene.visual}</small>
+                        </span>
+                        <time>{durationLabel(scene.duration)}</time>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <article className="scene-editor">
+                  <div className="presentation-toolbar">
+                    <div>
+                      <p className="eyebrow">Live presentation</p>
+                      <strong>{isVideoPreviewPlaying ? `Presenting section ${videoPreviewSceneIdx + 1} of ${scenes.length}` : 'Review and edit the selected section'}</strong>
+                    </div>
+                    <div className="presentation-actions">
+                      {isVideoPreviewPlaying ? (
+                        <button className="primary-button" type="button" onClick={stopVideoPreview}>
+                          Stop
+                        </button>
+                      ) : (
+                        <button className="primary-button" type="button" onClick={() => void startVideoPreview()}>
+                          &#9654; Play all with voice
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>
+                    {presentedAsset && <img className="slide-bg" src={presentedAsset} alt="" />}
+                    <div className="slide-left">
+                      <p className="slide-scene-label">
+                        Section {String(presentedScene.id).padStart(2, '0')} of {scenes.length}
+                      </p>
+                      <h2 className="slide-title">{presentedScene.title}</h2>
+                      <ul className="slide-bullets">
+                        {(presentedScene.bullets?.length ? presentedScene.bullets : extractBullets(presentedScene.narration)).map((bullet, i) => (
+                          <li key={i}>{bullet}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="slide-right">
+                      <div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}>
+                        <CloudyAvatar speaking={isSpeaking} size={96} />
+                      </div>
+                      {isSpeaking && (
+                        <span className="talk-badge">
+                          <span className="talk-bars">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </span>
+                          Cloudy is speaking
+                        </span>
+                      )}
+                    </div>
+                    <div className="slide-narration">
+                      <span className="slide-narration-label">{isVideoPreviewPlaying ? 'Now reading' : 'Cloudy narration'}</span>
+                      <p>{presentedScene.narration}</p>
+                    </div>
+                  </div>
+                  <div className="video-scene-progress" aria-label="Presentation sections">
+                    {scenes.map((scene, index) => (
+                      <button
+                        key={scene.id}
+                        type="button"
+                        className={`vsp-dot ${isVideoPreviewPlaying && index < videoPreviewSceneIdx ? 'done' : presentedScene.id === scene.id ? 'active' : ''}`}
+                        onClick={() => {
+                          if (!isVideoPreviewPlaying) setSelectedSceneId(scene.id)
+                        }}
+                        disabled={isVideoPreviewPlaying}
+                        title={scene.title}
+                      >
+                        {String(index + 1).padStart(2, '0')}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="editor-fields">
+                    <label>
+                      Section title
+                      <input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} />
+                    </label>
+                    <label>
+                      Cloudy narration
+                      <textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} />
+                    </label>
+                    <div className="duration-info">
+                      <span className="duration-info-label">Read time at 1× speed</span>
+                      <span className="duration-info-value">
+                        {durationLabel(selectedScene.duration)}
+                        <small>
+                          {' '}
+                          ({selectedScene.narration.trim().split(/\s+/).filter(Boolean).length} words · {selectedScene.duration}s)
+                        </small>
+                      </span>
+                    </div>
+                    <button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()} disabled={isVideoPreviewPlaying}>
+                      Preview selected section voice
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+          ) : (
+            <section className="story-placeholder">
+              <p className="eyebrow">Storyboard</p>
+              <h2>Generate an explainer to begin</h2>
+              <p>
+                Paste a public GitHub repository URL above and select <strong>Generate explainer</strong>. Cloudy will read the repository and build a live, editable storyboard here.
+              </p>
+            </section>
+          )}
+        </section>
+        {repository ? (
+          <aside className="review-panel">
+            <div>
+              <p className="eyebrow">Ready to export</p>
+              <h2>Local package</h2>
+            </div>
+            <ul className="checklist">
+              <li className="done">Repository source captured</li>
+              <li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li>
+              <li className="done">Editable Cloudy narration</li>
+              <li className={repository.assets.length ? 'done' : ''}>Source visuals selected</li>
+              <li className="done">Captions ready to export</li>
+            </ul>
+            <div className="export-actions">
+              {isRenderingVideo ? (
+                <button className="primary-button" type="button" onClick={cancelVideoExport}>
+                  Cancel video render {renderProgress}%
+                </button>
+              ) : (
+                <button className="primary-button" type="button" onClick={() => void exportVideo()}>
+                  Download video
+                </button>
+              )}
+              <button className="secondary-button" type="button" onClick={exportCaptions}>
+                Download captions
+              </button>
+              <button className="secondary-button" type="button" onClick={exportProject}>
+                Download project setup
+              </button>
+            </div>
+          </aside>
+        ) : (
+          <aside className="review-panel placeholder">
+            <div>
+              <p className="eyebrow">Ready to export</p>
+              <h2>Nothing to export yet</h2>
+              <p>Generate an explainer first. Export options for video, captions, and the project file appear once Cloudy has read a repository.</p>
+            </div>
+          </aside>
+        )}
+      </section>
+    </main>
+  )
 }
 
 export default App
