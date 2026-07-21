@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Local environment and OAuth configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Generated caches, reports, and local test artifacts
+.vite
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

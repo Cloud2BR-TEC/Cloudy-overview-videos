@@ -59,7 +59,7 @@ function App() {
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
-  const cloudyLogo = new URL('../logo-cloud2br-tec.png', import.meta.url).href
+  const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
   const apiHeaders: Record<string, string> = token ? { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` } : { Accept: 'application/vnd.github+json' }
   const visibleRepositories = availableRepositories.filter((item) => item.fullName.toLowerCase().includes(repositoryFilter.toLowerCase()))
 
