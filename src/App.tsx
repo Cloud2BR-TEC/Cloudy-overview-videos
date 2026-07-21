@@ -55,13 +55,26 @@ function extractReadmeImageUrls(markdown: string, owner: string, repo: string, b
   }
   return Array.from(urls).filter(isIllustrativeImage)
 }
-function extractReadmeSections(readme: string) {
-  const cleaned = readme.replace(/```[\s\S]*?```/g, '').replace(/^[#*_`>|\s]+|[#*_`>|\s]+$/g, '')
-  const features = (cleaned.match(/(?:features?|what\s+(?:this\s+)?does|capabilities?|highlights?)[:\s][\s\S]{0,600}/i)?.[0] || '').replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim()
-  const setup = (cleaned.match(/(?:install|setup|getting\s+started|quick\s+start|prerequisites?)[:\s][\s\S]{0,450}/i)?.[0] || '').replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim()
-  const usage = (cleaned.match(/(?:usage|how\s+to\s+use|examples?|api)[:\s][\s\S]{0,500}/i)?.[0] || '').replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim()
-  const next = (cleaned.match(/(?:contributing|resources?|further\s+reading|next\s+steps|learn\s+more)[:\s][\s\S]{0,300}/i)?.[0] || '').replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim()
-  return { features, setup, usage, next }
+function parseReadmeSections(readme: string): Array<{ heading: string; body: string }> {
+  const text = readme.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`\n]+`/g, ' ')
+  const lines = text.split('\n')
+  const sections: Array<{ heading: string; body: string }> = []
+  let heading = ''
+  let bodyLines: string[] = []
+  const flush = () => {
+    const body = bodyLines
+      .map(l => l.replace(/^[>\-*+]\s*/, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_#`|!\[\]()]/g, ' ').trim())
+      .filter(l => l.length > 4 && !/^https?:\/\//i.test(l))
+      .join(' ').replace(/\s+/g, ' ').trim()
+    if (body.length > 15) sections.push({ heading, body })
+    bodyLines = []
+  }
+  for (const line of lines) {
+    const h = line.match(/^#{1,4}\s+(.+)/)
+    if (h) { flush(); heading = h[1].replace(/[*_`#]/g, '').trim() } else { bodyLines.push(line) }
+  }
+  flush()
+  return sections
 }
 function isSceneCollection(value: unknown): value is Scene[] {
   return Array.isArray(value) && value.length > 0 && value.every((scene) =>
@@ -121,12 +134,44 @@ function loadImage(src: string) {
 }
 function buildScenes(repo: Repository): Scene[] {
   const subject = repo.fullName.split('/')[1].replaceAll('-', ' ')
-  const sections = extractReadmeSections(repo.readme)
-  const intro = limitWords(`${repo.description || `${subject} is a repository on GitHub.`} ${repo.language ? `Built with ${repo.language}.` : ''} ${repo.topics.length ? `Topics include ${repo.topics.slice(0, 4).join(', ')}.` : ''}`, 150)
-  const features = limitWords(sections.features || `This repository contains ${repo.language || 'source'} code${repo.topics.length ? ` focused on ${repo.topics.slice(0, 3).join(', ')}` : ''}. Explore the code to understand the architecture and approach used by the maintainers.`, 250)
-  const structure = limitWords(`${sections.setup || `The project can be set up by following the repository documentation and the steps described in the README.`} ${repo.assets.length ? `The repository contains ${repo.assets.length} supporting image${repo.assets.length === 1 ? '' : 's'} and additional assets.` : ''}`, 220)
-  const practice = limitWords(sections.usage || `To put this into practice, clone the repository, review the ${repo.language || 'source'} files, run the examples, and follow the workflow steps described in the documentation to produce your first outcome.`, 230)
-  const outro = limitWords(sections.next || `Continue your learning journey by exploring the open issues, reviewing related repositories, and connecting with the ${repo.topics[0] || 'project'} community. Check back for updates and new content.`, 160)
+  const sections = parseReadmeSections(repo.readme)
+  const find = (pattern: RegExp) =>
+    sections.find(s => pattern.test(s.heading) && s.body.trim().split(/\s+/).length > 8)?.body ?? ''
+  const fallback = (idx: number) => sections[idx]?.body ?? ''
+
+  // Scene 1 – intro: description + first README body
+  const introRaw = [
+    repo.description ?? '',
+    repo.language ? `Built with ${repo.language}.` : '',
+    repo.topics.length ? `Topics: ${repo.topics.slice(0, 4).join(', ')}.` : '',
+    fallback(0),
+  ].filter(Boolean).join(' ')
+  const intro = limitWords(introRaw, 130)
+
+  // Scene 2 – what you'll learn: features / overview / about / highlights
+  const featuresRaw = find(/features?|overview|about\b|what\s+(it|this|we|you)|highlights?|key\s+point|objective|goal|purpose/i)
+    || fallback(1)
+    || `This repository contains ${repo.language || 'source'} code${repo.topics.length ? ` focused on ${repo.topics.slice(0, 3).join(', ')}` : ''}.`
+  const features = limitWords(featuresRaw, 220)
+
+  // Scene 3 – explore: install / setup / structure / architecture
+  const setupRaw = find(/install|setup|getting[\s-]started|structure|architecture|prerequisites?|requirements?|configur|depend/i)
+    || fallback(2)
+    || 'Follow the repository documentation and README to understand the project structure and set up the environment.'
+  const structure = limitWords(setupRaw, 200)
+
+  // Scene 4 – practice: usage / examples / api / demo / how-to
+  const usageRaw = find(/usage|example|how[\s-]to|tutorial|guide|quickstart|api\b|demo|walkthrough/i)
+    || fallback(3)
+    || `Clone the repository, run the examples, and follow the workflow described in the documentation.`
+  const practice = limitWords(usageRaw, 210)
+
+  // Scene 5 – keep learning: contributing / next steps / resources / community
+  const outroRaw = find(/contribut|resource|further|next[\s-]step|learn[\s-]more|reference|acknowledgment|credit|community|roadmap/i)
+    || sections[sections.length - 1]?.body
+    || `Continue learning by exploring open issues and related projects in the ${repo.topics[0] || 'project'} community.`
+  const outro = limitWords(outroRaw, 140)
+
   return [
     { id: 1, title: `Meet ${subject}`, duration: wordsToSeconds(intro), narration: intro, visual: 'Repository cover and Cloudy host' },
     { id: 2, title: 'What you will learn', duration: wordsToSeconds(features), narration: features, visual: 'README highlights and course map' },
@@ -162,7 +207,8 @@ function App() {
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
   const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
   const apiHeaders: Record<string, string> = { Accept: 'application/vnd.github+json' }
-  const sceneImages = repository?.assets.length ? repository.assets.filter((_, assetIndex) => assetIndex % scenes.length === selectedSceneIndex) : []
+  const imgsPerScene = repository?.assets.length ? Math.max(1, Math.ceil(repository.assets.length / scenes.length)) : 1
+  const sceneImages = repository?.assets.length ? repository.assets.slice(selectedSceneIndex * imgsPerScene, selectedSceneIndex * imgsPerScene + imgsPerScene) : []
   const previewAsset = sceneImages.length ? sceneImages[previewImageIndex % sceneImages.length] : null
 
   useEffect(() => {
@@ -221,10 +267,16 @@ function App() {
       const sourceFiles = contentsResponse.ok ? await contentsResponse.json() as Array<{ name: string; type: string; download_url: string | null }> : []
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
       const rootImages = sourceFiles.filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name)).map((file) => file.download_url as string)
-      const assetFolders = sourceFiles.filter((file) => file.type === 'dir' && /^(assets|images|img|media|docs|screenshots|.github)$/i.test(file.name)).slice(0, 3)
-      const folderListings = await Promise.all(assetFolders.map((folder) => fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${folder.name}`, { headers: apiHeaders }).then((response) => response.ok ? response.json() as Promise<Array<{ type: string; download_url: string | null }>> : []).catch(() => [])))
-      const folderImages = folderListings.flat().filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.download_url)).map((file) => file.download_url as string)
-      const assets = Array.from(new Set([...readmeImages, ...rootImages, ...folderImages])).slice(0, 8)
+      const assetFolders = sourceFiles.filter((file) => file.type === 'dir' && /^(assets|images|img|media|docs|screenshots|figures|resources|\.github)$/i.test(file.name)).slice(0, 4)
+      const folderListings = await Promise.all(assetFolders.map((folder) =>
+        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${folder.name}`, { headers: apiHeaders })
+          .then((response) => response.ok ? response.json() as Promise<Array<{ type: string; name: string; download_url: string | null; path: string }>> : [])
+          .catch(() => [])
+      ))
+      const folderImages = folderListings.flat()
+        .filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name))
+        .map((file) => file.download_url as string)
+      const assets = Array.from(new Set([...readmeImages, ...folderImages, ...rootImages])).slice(0, 12)
       const newRepo: Repository = { fullName: data.full_name, description: data.description ?? 'No repository description was provided.', topics: data.topics ?? [], language: data.language, defaultBranch: data.default_branch, license: data.license?.spdx_id ?? 'No license detected', stars: data.stargazers_count, openIssues: data.open_issues_count, readme: readmeText, assets }
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
