@@ -1,0 +1,39 @@
+name: Validate Notebooks
+
+on:
+  pull_request:
+    paths:
+      - '**/*.ipynb'
+      - '.github/workflows/validate-notebooks.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.ipynb'
+      - '.github/workflows/validate-notebooks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check nbformat
+      - name: Validate notebooks when present
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import nbformat
+
+          notebooks = list(Path('.').rglob('*.ipynb'))
+          for notebook_path in notebooks:
+              with notebook_path.open(encoding='utf-8') as notebook_file:
+                  notebook = nbformat.read(notebook_file, as_version=4)
+              nbformat.validate(notebook)
+              print(f'Validated {notebook_path}')
+          print(f'Validated {len(notebooks)} notebook(s).')
+          PY
