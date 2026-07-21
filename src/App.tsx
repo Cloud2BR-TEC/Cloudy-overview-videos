@@ -287,6 +287,12 @@ function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageEleme
   const drawHeight = image.height * scale
   context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight)
 }
+function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const scale = Math.min(width / image.width, height / image.height)
+  const drawWidth = image.width * scale
+  const drawHeight = image.height * scale
+  context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight)
+}
 
 function App() {
   const [repositoryUrl, setRepositoryUrl] = useState(starterRepository)
@@ -466,12 +472,10 @@ function App() {
 
     const drawFrame = (elapsedSeconds: number) => {
       let sceneOffset = 0
-      let sceneIndex = scenes.length - 1
       const scene =
-        scenes.find((item, index) => {
+        scenes.find((item) => {
           sceneOffset += item.duration
           if (elapsedSeconds < sceneOffset) {
-            sceneIndex = index
             return true
           }
           return false
@@ -507,22 +511,13 @@ function App() {
       const leftW = 1_060
       context.fillStyle = '#f5a975'
       context.fillRect(80, 140, 7, 340)
-      context.fillStyle = '#f5a975'
-      context.font = '700 26px Manrope, sans-serif'
-      context.fillText(`SECTION ${scene.section} OF 5  ·  SLIDE ${scene.slideInSection} OF ${SLIDES_PER_SECTION}  ·  ${scene.duration} SEC`, 100, 178)
-      scenes.forEach((_, index) => {
-        context.fillStyle = index === sceneIndex ? '#f5a975' : 'rgba(255,255,255,.35)'
-        context.beginPath()
-        context.arc(100 + index * 24, 208, index === sceneIndex ? 7 : 4, 0, Math.PI * 2)
-        context.fill()
-      })
       context.save()
       context.globalAlpha = eased
       context.translate((1 - eased) * -60, 0)
       context.fillStyle = '#ffffff'
       context.font = `800 ${scene.title.length > 20 ? 70 : 86}px Manrope, sans-serif`
       const titleLines = wrapCanvasText(context, scene.title, leftW)
-      titleLines.slice(0, 2).forEach((line, i) => context.fillText(line, 100, 286 + i * 96))
+      titleLines.slice(0, 2).forEach((line, i) => context.fillText(line, 100, 220 + i * 96))
       context.restore()
 
       // Bullet points
@@ -532,7 +527,7 @@ function App() {
         if (alpha <= 0) return
         context.save()
         context.globalAlpha = alpha
-        const by = 510 + i * 80
+        const by = 450 + i * 80
         context.fillStyle = '#f5a975'
         context.beginPath()
         context.arc(108, by - 9, 6, 0, Math.PI * 2)
@@ -553,21 +548,11 @@ function App() {
         context.roundRect(rightX, 140, rightW, 700, 14)
         context.clip()
         context.globalAlpha = 0.92
-        drawCoverImage(context, panelImage, rightX, 140, rightW, 700, 1 + sceneProgress * 0.05)
-        context.restore()
-        const imgOverlay = context.createLinearGradient(rightX, 0, rightX + rightW, 0)
-        imgOverlay.addColorStop(0, 'rgba(10,28,26,.45)')
-        imgOverlay.addColorStop(0.3, 'rgba(10,28,26,0)')
-        context.fillStyle = imgOverlay
+        context.fillStyle = '#f5fafc'
         context.fillRect(rightX, 140, rightW, 700)
+        drawContainImage(context, panelImage, rightX + 24, 164, rightW - 48, 652)
+        context.restore()
       }
-
-      // Repo name watermark top-right
-      context.fillStyle = 'rgba(255,255,255,.55)'
-      context.font = '500 22px Manrope, sans-serif'
-      context.textAlign = 'right'
-      context.fillText(repository?.fullName ?? 'Cloudy Repository Video Studio', canvas.width - 60, 80)
-      context.textAlign = 'left'
 
       context.fillStyle = 'rgba(10, 31, 29, .84)'
       context.fillRect(0, 868, canvas.width, 172)
@@ -903,9 +888,6 @@ function App() {
                   </div>
                   <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>
                     <div className="slide-left markdown-slide-copy">
-                      <p className="slide-scene-label">
-                        Section {presentedScene.section} of 5 · Slide {presentedScene.slideInSection} of {SLIDES_PER_SECTION} · {presentedScene.duration} sec
-                      </p>
                       <h2 className="slide-title">{presentedScene.title}</h2>
                       <ul className="slide-bullets">
                         {(presentedScene.bullets?.length ? presentedScene.bullets : extractBullets(presentedScene.narration)).map((bullet, i) => (
@@ -923,7 +905,6 @@ function App() {
                       ) : (
                         <span>No repository image available</span>
                       )}
-                      <figcaption>{presentedScene.assets.length} repository visual{presentedScene.assets.length === 1 ? '' : 's'} / {presentedScene.assetLabel}</figcaption>
                     </figure>
                     <div className="slide-right">
                       <div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}>
