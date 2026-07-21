@@ -1,20 +1,13 @@
 import { useEffect, useState } from 'react'
 
-// Mouth shapes as SVG path d-strings cycling through talking frames
-// Each frame represents a different mouth opening (closed → open → closed)
+// Mouth shapes cycling through talking frames (viewBox 0 0 100 80)
 const TALK_FRAMES = [
-  // 0 – neutral smile
-  { d: 'M52 87 Q60 91 68 87', fill: 'none', ry: 0 },
-  // 1 – slight opening "ih"
-  { d: 'M53 86 Q60 91 67 86 Q60 88 53 86Z', fill: '#d94f3d', ry: 2 },
-  // 2 – open "ah"
-  { d: 'M52 85 Q60 93 68 85 Q60 90 52 85Z', fill: '#c94030', ry: 4 },
-  // 3 – wide "aah"
-  { d: 'M52 84 Q60 95 68 84 Q60 91 52 84Z', fill: '#be3828', ry: 5.5 },
-  // 4 – "oo"
-  { d: 'M55 85 Q60 93 65 85 Q60 90 55 85Z', fill: '#c94030', ry: 4 },
-  // 5 – closing "ih"
-  { d: 'M53 86 Q60 91 67 86 Q60 88 53 86Z', fill: '#d94f3d', ry: 2 },
+  { d: 'M36 62 Q50 67 64 62', fill: 'none' },
+  { d: 'M37 61 Q50 67 63 61 Q50 65 37 61Z', fill: '#d94f3d' },
+  { d: 'M36 60 Q50 70 64 60 Q50 67 36 60Z', fill: '#c94030' },
+  { d: 'M36 59 Q50 72 64 59 Q50 68 36 59Z', fill: '#be3828' },
+  { d: 'M38 60 Q50 70 62 60 Q50 67 38 60Z', fill: '#c94030' },
+  { d: 'M37 61 Q50 67 63 61 Q50 65 37 61Z', fill: '#d94f3d' },
 ]
 
 export default function CloudyAvatar({
@@ -27,40 +20,30 @@ export default function CloudyAvatar({
   const [frame, setFrame] = useState(0)
 
   useEffect(() => {
-    if (!speaking) {
-      setFrame(0)
-      return
-    }
-    const interval = window.setInterval(() => {
-      setFrame((f) => (f + 1) % TALK_FRAMES.length)
-    }, 90)
+    if (!speaking) { setFrame(0); return }
+    const interval = window.setInterval(() => setFrame((f) => (f + 1) % TALK_FRAMES.length), 90)
     return () => window.clearInterval(interval)
   }, [speaking])
 
   const mouth = TALK_FRAMES[frame]
   const showTeeth = frame >= 2
-
-  // unique clip-path id to avoid conflicts when multiple instances render
-  const clipId = `badge-clip-${size}`
   const mouthClipId = `mouth-clip-${size}`
+  const filterId = `cloud-shadow-${size}`
 
   return (
     <svg
-      viewBox="0 0 120 120"
+      viewBox="0 0 100 80"
       width={size}
-      height={size}
+      height={Math.round(size * 0.8)}
       xmlns="http://www.w3.org/2000/svg"
       style={{ display: 'block', overflow: 'visible' }}
-      aria-label="Cloudy avatar"
+      aria-label="Cloudy"
     >
       <defs>
-        <clipPath id={clipId}>
-          <circle cx="60" cy="60" r="56" />
-        </clipPath>
-        <radialGradient id="badge-bg" cx="38%" cy="32%" r="70%">
-          <stop offset="0%" stopColor="#3991e0" />
-          <stop offset="100%" stopColor="#1050a0" />
-        </radialGradient>
+        <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="3" stdDeviation={speaking ? '3' : '2'}
+            floodColor={speaking ? '#f5a975' : '#aac8d8'} floodOpacity="0.5" />
+        </filter>
         {showTeeth && (
           <clipPath id={mouthClipId}>
             <path d={mouth.d} />
@@ -68,90 +51,52 @@ export default function CloudyAvatar({
         )}
       </defs>
 
-      {/* Circular badge background */}
-      <circle cx="60" cy="60" r="58" fill="url(#badge-bg)" />
-      <circle cx="60" cy="60" r="57" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="2" />
-
-      <g clipPath={`url(#${clipId})`}>
-        {/* ── Cloud body ── */}
-        <circle cx="44" cy="83" r="23" fill="#f0f8ff" />
-        <circle cx="60" cy="75" r="26" fill="#f0f8ff" />
-        <circle cx="76" cy="83" r="23" fill="#f0f8ff" />
-        <circle cx="51" cy="70" r="21" fill="#f0f8ff" />
-        <circle cx="69" cy="69" r="20" fill="#f0f8ff" />
-        {/* Fill bottom gap */}
-        <rect x="22" y="83" width="76" height="34" fill="#f0f8ff" />
-
-        {/* ── Graduation cap ── */}
-        {/* Board (mortarboard flat top) */}
-        <g transform="translate(60,44) rotate(-2)">
-          {/* cap dome */}
-          <ellipse cx="0" cy="4" rx="17" ry="8" fill="#1a1a2e" />
-          {/* flat top */}
-          <rect x="-24" y="-4" width="48" height="9" rx="3" fill="#1a1a2e" />
-          {/* Tassel string */}
-          <line x1="24" y1="2" x2="30" y2="14" stroke="#f5a975" strokeWidth="2.2" strokeLinecap="round" />
-          {/* Tassel end */}
-          <circle cx="30" cy="15" r="3.5" fill="#f5a975" />
-          <line x1="28" y1="18" x2="25" y2="24" stroke="#f5a975" strokeWidth="1.8" strokeLinecap="round" />
-          <line x1="30" y1="18" x2="31" y2="24" stroke="#f5a975" strokeWidth="1.8" strokeLinecap="round" />
-          <line x1="32" y1="18" x2="34" y2="23" stroke="#f5a975" strokeWidth="1.8" strokeLinecap="round" />
-        </g>
-
-        {/* ── Eyes ── */}
-        {/* Glasses – left */}
-        <circle cx="48" cy="77" r="11" fill="rgba(185,220,255,0.45)" stroke="#1e1e38" strokeWidth="2.8" />
-        {/* Glasses – right */}
-        <circle cx="72" cy="77" r="11" fill="rgba(185,220,255,0.45)" stroke="#1e1e38" strokeWidth="2.8" />
-        {/* Bridge */}
-        <line x1="59" y1="77" x2="61" y2="77" stroke="#1e1e38" strokeWidth="2.5" />
-        {/* Left temple arm */}
-        <line x1="37" y1="75" x2="40" y2="77" stroke="#1e1e38" strokeWidth="2" strokeLinecap="round" />
-        {/* Right temple arm */}
-        <line x1="83" y1="75" x2="80" y2="77" stroke="#1e1e38" strokeWidth="2" strokeLinecap="round" />
-        {/* Pupils */}
-        <circle cx="48" cy="77" r="4.5" fill="#1a1a2e" />
-        <circle cx="72" cy="77" r="4.5" fill="#1a1a2e" />
-        {/* Eye shine */}
-        <circle cx="50" cy="75" r="1.8" fill="white" />
-        <circle cx="74" cy="75" r="1.8" fill="white" />
-
-        {/* ── Cheeks ── */}
-        <circle cx="40" cy="86" r="7" fill="rgba(255,160,160,0.32)" />
-        <circle cx="80" cy="86" r="7" fill="rgba(255,160,160,0.32)" />
-
-        {/* ── Mouth ── */}
-        {/* Inner mouth (dark cavity) when open */}
-        {showTeeth && (
-          <path d={mouth.d} fill="#8b1a1a" />
-        )}
-        {/* Teeth */}
-        {showTeeth && (
-          <rect
-            x="54" y="85" width="12" height="5" rx="1"
-            fill="white"
-            clipPath={`url(#${mouthClipId})`}
-          />
-        )}
-        {/* Mouth outline */}
-        <path
-          d={mouth.d}
-          fill={mouth.fill}
-          stroke="#b03020"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {/* Speaking glow ring */}
-        {speaking && (
-          <circle
-            cx="60" cy="60" r="57"
-            fill="none"
-            stroke="rgba(245,169,117,0.55)"
-            strokeWidth="4"
-          />
-        )}
+      {/* ── Cloud body ── */}
+      <g filter={`url(#${filterId})`}>
+        {/* Puffy bumps */}
+        <circle cx="28" cy="52" r="18" fill="white" />
+        <circle cx="50" cy="44" r="22" fill="white" />
+        <circle cx="72" cy="52" r="18" fill="white" />
+        <circle cx="38" cy="42" r="17" fill="white" />
+        <circle cx="63" cy="41" r="16" fill="white" />
+        {/* Flat bottom */}
+        <rect x="10" y="52" width="80" height="24" rx="6" fill="white" />
       </g>
+
+      {/* ── Graduation cap ── */}
+      <g transform="translate(50,18) rotate(-3)">
+        <ellipse cx="0" cy="5" rx="14" ry="7" fill="#1a1a2e" />
+        <rect x="-20" y="-3" width="40" height="8" rx="3" fill="#1a1a2e" />
+        <line x1="20" y1="2" x2="25" y2="12" stroke="#f5a975" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="25" cy="13" r="3" fill="#f5a975" />
+        <line x1="23" y1="16" x2="21" y2="21" stroke="#f5a975" strokeWidth="1.6" strokeLinecap="round" />
+        <line x1="25" y1="16" x2="26" y2="21" stroke="#f5a975" strokeWidth="1.6" strokeLinecap="round" />
+        <line x1="27" y1="15" x2="29" y2="20" stroke="#f5a975" strokeWidth="1.6" strokeLinecap="round" />
+      </g>
+
+      {/* ── Glasses ── */}
+      <circle cx="38" cy="55" r="10" fill="rgba(185,225,255,0.5)" stroke="#1e1e38" strokeWidth="2.5" />
+      <circle cx="62" cy="55" r="10" fill="rgba(185,225,255,0.5)" stroke="#1e1e38" strokeWidth="2.5" />
+      <line x1="48" y1="55" x2="52" y2="55" stroke="#1e1e38" strokeWidth="2.2" />
+      <line x1="28" y1="53" x2="31" y2="55" stroke="#1e1e38" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="72" y1="53" x2="69" y2="55" stroke="#1e1e38" strokeWidth="1.8" strokeLinecap="round" />
+
+      {/* ── Pupils ── */}
+      <circle cx="38" cy="55" r="4" fill="#1a1a2e" />
+      <circle cx="62" cy="55" r="4" fill="#1a1a2e" />
+      <circle cx="40" cy="53" r="1.6" fill="white" />
+      <circle cx="64" cy="53" r="1.6" fill="white" />
+
+      {/* ── Cheeks ── */}
+      <circle cx="30" cy="63" r="6" fill="rgba(255,160,160,0.3)" />
+      <circle cx="70" cy="63" r="6" fill="rgba(255,160,160,0.3)" />
+
+      {/* ── Mouth ── */}
+      {showTeeth && <path d={mouth.d} fill="#8b1a1a" />}
+      {showTeeth && (
+        <rect x="44" y="62" width="12" height="4" rx="1" fill="white" clipPath={`url(#${mouthClipId})`} />
+      )}
+      <path d={mouth.d} fill={mouth.fill} stroke="#b03020" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
