@@ -82,7 +82,15 @@ function decodeBase64(value: string) {
   return new TextDecoder().decode(Uint8Array.from(atob(value.replace(/\s/g, '')), (character) => character.charCodeAt(0)))
 }
 function isIllustrativeImage(url: string) {
-  return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url) && !/badge|shields\.io|badgen|coveralls|travis-ci|circleci|codecov/i.test(url)
+  return /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url) && !/badge|shields\.io|badgen|coveralls|travis-ci|circleci|codecov/i.test(url)
+}
+function repositoryImageScore(path: string) {
+  const normalized = path.toLowerCase()
+  let score = 0
+  if (/(^|\/)(screenshots?|images?|media|docs?|figures?|resources?)(\/|$)/.test(normalized)) score += 4
+  if (/cover|hero|banner|screenshot|preview|demo|architecture|diagram|workflow/.test(normalized)) score += 3
+  if (/logo|icon|avatar|favicon/.test(normalized)) score -= 2
+  return score
 }
 function extractReadmeImageUrls(markdown: string, owner: string, repo: string, branch: string) {
   const urls = new Set<string>()
@@ -336,12 +344,11 @@ function App() {
     setIsLoading(true)
     setStatus('Reviewing the repository README, folders, and images...')
     try {
-      const [repositoryResponse, readmeResponse, contentsResponse] = await Promise.all([
+      const [repositoryResponse, readmeResponse] = await Promise.all([
         fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
           headers: apiHeaders,
         }),
         fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/readme`, { headers: apiHeaders }),
-        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents`, { headers: apiHeaders }),
       ])
       if (!repositoryResponse.ok) throw new Error('Repository unavailable')
       const data = (await repositoryResponse.json()) as {
@@ -356,39 +363,24 @@ function App() {
       }
       const readmeData = readmeResponse.ok ? ((await readmeResponse.json()) as { content?: string }) : null
       const readmeText = readmeData?.content ? decodeBase64(readmeData.content) : ''
-      const sourceFiles = contentsResponse.ok
-        ? ((await contentsResponse.json()) as Array<{
-            name: string
-            type: string
-            download_url: string | null
-          }>)
-        : []
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
-      const rootImages = sourceFiles.filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name)).map((file) => file.download_url as string)
-      const assetFolders = sourceFiles.filter((file) => file.type === 'dir' && /^(assets|images|img|media|docs|screenshots|figures|resources|\.github)$/i.test(file.name)).slice(0, 4)
-      const folderListings = await Promise.all(
-        assetFolders.map((folder) =>
-          fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${folder.name}`, { headers: apiHeaders })
-            .then((response) =>
-              response.ok
-                ? (response.json() as Promise<
-                    Array<{
-                      type: string
-                      name: string
-                      download_url: string | null
-                      path: string
-                    }>
-                  >)
-                : [],
-            )
-            .catch(() => []),
-        ),
-      )
-      const folderImages = folderListings
-        .flat()
-        .filter((file) => file.type === 'file' && file.download_url && isIllustrativeImage(file.name))
-        .map((file) => file.download_url as string)
-      const assets = Array.from(new Set([...readmeImages, ...folderImages, ...rootImages])).slice(0, 12)
+      const treeResponse = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(data.default_branch)}?recursive=1`, { headers: apiHeaders })
+      const treeData = treeResponse.ok
+        ? ((await treeResponse.json()) as {
+            tree?: Array<{ path: string; type: string; size?: number }>
+          })
+        : null
+      const repositoryImages = (treeData?.tree ?? [])
+        .filter(
+          (entry) =>
+            entry.type === 'blob' &&
+            isIllustrativeImage(entry.path) &&
+            !/(^|\/)(node_modules|vendor|dist|build|coverage|\.next)(\/|$)/i.test(entry.path) &&
+            (entry.size ?? 0) <= 10_000_000,
+        )
+        .sort((left, right) => repositoryImageScore(right.path) - repositoryImageScore(left.path))
+        .map((entry) => `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(data.default_branch)}/${entry.path.split('/').map(encodeURIComponent).join('/')}`)
+      const assets = Array.from(new Set([...readmeImages, ...repositoryImages])).slice(0, 12)
       const newRepo: Repository = {
         fullName: data.full_name,
         description: data.description ?? 'No repository description was provided.',
