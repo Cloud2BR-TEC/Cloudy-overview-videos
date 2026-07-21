@@ -725,10 +725,6 @@ function App() {
             <small>Repository Video Studio</small>
           </span>
         </a>
-        <div className="project-state">
-          <span className={isExportReady ? 'saved-dot' : 'unsaved-dot'}></span>
-          {isExportReady ? 'Downloads ready' : 'Downloads locked'}
-        </div>
       </header>
       <section className="workspace">
         <aside className="rail" aria-label="Project workflow">
