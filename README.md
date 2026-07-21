@@ -8,13 +8,21 @@ Refresh Date: 2026-07-13
 
 ## GitHub Pages Application
 
-Cloudy Repository Video Studio is a static GitHub Pages application. It reads public GitHub repositories directly from the GitHub API, collects repository metadata, README content, and root image assets, then creates an editable Cloudy storyboard. Projects remain in browser local storage and can be exported as JSON with editable SRT captions.
+Cloudy Repository Video Studio is a static GitHub Pages application. Users sign in through GitHub's browser consent flow, choose an available repository or paste a repository URL, and create an editable Cloudy storyboard from repository metadata, README content, and root image assets. Cloudy can preview narration using a locally available female voice when the browser provides one. Projects remain in browser local storage and can be exported as JSON with editable SRT captions.
 
-### Private Repositories
+### GitHub Browser Sign-In
 
-For a private repository, users can connect a fine-grained GitHub personal access token with read-only access to selected repositories. The token is held only in `sessionStorage` for the active browser session and is sent only to `api.github.com`; it is not committed, logged, or stored in local project files.
+The deployment uses GitHub Device Flow. It opens GitHub in a separate browser tab, where the user signs in and approves access. The resulting access token is held only in the running page's memory: it is not written to local storage, session storage, project exports, repository files, or a Cloudy server. Signing out or refreshing the page discards it.
 
-GitHub Pages cannot safely host an OAuth client secret, shared AI credential, or server-side video renderer. This release therefore does not claim GitHub ownership validation, hosted AI generation, direct YouTube upload, or MP4 server rendering. All active features run in the browser.
+One-time setup by a repository administrator:
+
+1. Register a GitHub OAuth App and enable Device Flow.
+2. Add its public client ID as the `GITHUB_OAUTH_CLIENT_ID` Actions variable in the repository settings.
+3. Push to `main` or rerun the `Pages` workflow.
+
+The consent scope is `read:user repo`, which allows the repository picker to list repositories the user can access. The application only sends read requests to GitHub's API; it does not write to repositories.
+
+GitHub Pages cannot safely host a client secret, shared AI credential, direct YouTube publishing credential, or server-side MP4 renderer. All active features run in the browser.
 
 ## Run Locally
 
