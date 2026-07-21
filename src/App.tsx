@@ -83,12 +83,14 @@ function App() {
   const [isSaved, setIsSaved] = useState(false)
   const [isRenderingVideo, setIsRenderingVideo] = useState(false)
   const [renderProgress, setRenderProgress] = useState(0)
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false)
   const renderAbortRef = useRef(false)
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
   const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
   const apiHeaders: Record<string, string> = { Accept: 'application/vnd.github+json' }
+  const previewAsset = repository?.assets.length ? repository.assets[(selectedScene.id - 1) % repository.assets.length] : null
 
   useEffect(() => {
     try {
@@ -106,6 +108,17 @@ function App() {
       }
     } catch { window.localStorage.removeItem(projectKey) }
   }, [])
+
+  useEffect(() => {
+    if (!isPreviewPlaying) return
+    const interval = window.setInterval(() => {
+      setSelectedSceneId((currentId) => {
+        const currentIndex = scenes.findIndex((scene) => scene.id === currentId)
+        return scenes[(currentIndex + 1) % scenes.length].id
+      })
+    }, 6_000)
+    return () => window.clearInterval(interval)
+  }, [isPreviewPlaying, scenes])
 
   async function loadRepository(value: string) {
     const parsed = parseRepositoryUrl(value)
@@ -164,7 +177,7 @@ function App() {
     renderAbortRef.current = false
     setIsRenderingVideo(true)
     setRenderProgress(0)
-    setStatus('Rendering your YouTube video in this browser. Keep this tab open.')
+    setStatus('Rendering your video in this browser. Keep this tab open.')
     recorder.start(1_000)
 
     const drawFrame = (elapsedSeconds: number) => {
@@ -233,10 +246,10 @@ function App() {
     const url = URL.createObjectURL(video)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'cloudy-youtube-video.webm'
+    link.download = 'cloudy-video.webm'
     link.click()
     URL.revokeObjectURL(url)
-    setStatus('YouTube-ready WebM video downloaded. Captions are embedded on screen.')
+    setStatus('WebM video downloaded. Captions are embedded on screen.')
   }
   function cancelVideoExport() { renderAbortRef.current = true; setStatus('Stopping video render...') }
   function previewVoice() {
@@ -257,8 +270,8 @@ function App() {
       <div className="section-heading"><div><p className="eyebrow">Cloudy overview video</p><h1>Choose the repository Cloudy will explain.</h1></div><p className="status" aria-live="polite">{status}</p></div>
       <section className="repository-form"><p className="eyebrow">Public repository</p><label htmlFor="repository-url">GitHub repository URL</label><div className="url-entry"><input id="repository-url" type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" /><button className="primary-button" type="button" onClick={() => void loadRepository(repositoryUrl)} disabled={isLoading}>{isLoading ? 'Reading...' : 'Generate explainer'}</button></div><p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p></section>
       {repository && <section className="repository-card" aria-label="Repository source"><div className="repository-title"><div><p className="eyebrow">Source evidence</p><h2>{repository.fullName}</h2><p>{repository.description}</p></div><button className="text-button" type="button" onClick={generateStoryboard}>Refresh Cloudy draft</button></div><div className="metadata-grid"><span><small>Default branch</small>{repository.defaultBranch}</span><span><small>Primary language</small>{repository.language ?? 'Not detected'}</span><span><small>License</small>{repository.license}</span><span><small>Signals</small>{repository.stars} stars · {repository.openIssues} issues</span></div>{repository.assets.length > 0 && <div className="asset-strip">{repository.assets.map((asset) => <img key={asset} src={asset} alt="Repository source asset" />)}</div>}{repository.topics.length > 0 && <div className="tags">{repository.topics.slice(0, 6).map((topic) => <span key={topic}>{topic}</span>)}</div>}</section>}
-      <section className="story-area"><div className="story-head"><div><p className="eyebrow">Storyboard</p><h2>Cloudy’s explainer</h2></div><div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>{durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small></div></div><div className="story-grid"><ol className="scene-list">{scenes.map((scene) => <li key={scene.id}><button type="button" className={scene.id === selectedScene.id ? 'scene selected' : 'scene'} onClick={() => setSelectedSceneId(scene.id)}><span className="scene-number">{String(scene.id).padStart(2, '0')}</span><span><strong>{scene.title}</strong><small>{scene.visual}</small></span><time>{durationLabel(scene.duration)}</time></button></li>)}</ol><article className="scene-editor"><div className="preview-stage"><div className="preview-visual">{repository?.assets[0] ? <img className="source-visual" src={repository.assets[0]} alt="Selected repository source visual" /> : <img src={cloudyLogo} alt="Cloudy presents the selected scene" />}<span className="cloudy-avatar"><img src={cloudyLogo} alt="" /></span><span className="spark one"></span><span className="spark two"></span></div><div className="scene-caption"><span>Scene {selectedScene.id}</span><strong>{selectedScene.visual}</strong></div></div><div className="editor-fields"><label>Scene title<input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} /></label><label>Cloudy narration<textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} /></label><label>Scene duration <span className="field-suffix">seconds</span><input type="number" min="15" value={selectedScene.duration} onChange={(event) => updateScene('duration', event.target.value)} /></label><button className="secondary-button voice-button" type="button" onClick={previewVoice}>Preview female voice</button></div></article></div></section>
-    </section><aside className="review-panel"><div><p className="eyebrow">Ready to export</p><h2>Local package</h2></div><ul className="checklist"><li className={repository ? 'done' : ''}>Repository source captured</li><li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li><li className="done">Editable Cloudy narration</li><li className={repository?.assets.length ? 'done' : ''}>Source visuals selected</li><li className="done">Captions ready to export</li></ul><div className="export-actions">{isRenderingVideo ? <button className="primary-button" type="button" onClick={cancelVideoExport}>Cancel video render {renderProgress}%</button> : <button className="primary-button" type="button" onClick={() => void exportVideo()}>Download YouTube video</button>}<button className="secondary-button" type="button" onClick={exportCaptions}>Download captions</button><button className="secondary-button" type="button" onClick={exportProject}>Download project setup</button></div></aside></section>
+      <section className="story-area"><div className="story-head"><div><p className="eyebrow">Storyboard</p><h2>Cloudy’s explainer</h2></div><div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>{durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small></div></div><div className="story-grid"><ol className="scene-list">{scenes.map((scene) => <li key={scene.id}><button type="button" className={scene.id === selectedScene.id ? 'scene selected' : 'scene'} onClick={() => { setIsPreviewPlaying(false); setSelectedSceneId(scene.id) }}><span className="scene-number">{String(scene.id).padStart(2, '0')}</span><span><strong>{scene.title}</strong><small>{scene.visual}</small></span><time>{durationLabel(scene.duration)}</time></button></li>)}</ol><article className="scene-editor"><div className="preview-stage"><div className={`preview-visual ${isPreviewPlaying ? 'is-playing' : ''}`}>{previewAsset ? <img className="source-visual" src={previewAsset} alt="Repository source visual for the generated video" /> : <img src={cloudyLogo} alt="Cloudy presents the selected scene" />}<div className="preview-overlay"><span>Generated video preview</span><strong>{selectedScene.title}</strong><p>{selectedScene.narration}</p></div><span className="cloudy-avatar"><img src={cloudyLogo} alt="Cloudy" /></span><span className="spark one"></span><span className="spark two"></span></div><div className="scene-caption"><span>Scene {selectedScene.id}</span><strong>{selectedScene.visual}</strong></div></div><div className="preview-controls"><button className="secondary-button" type="button" onClick={() => setIsPreviewPlaying((playing) => !playing)}>{isPreviewPlaying ? 'Pause generated preview' : 'Play generated preview'}</button><span>{isPreviewPlaying ? 'Cloudy is moving through the storyboard.' : 'Play to preview Cloudy and the selected repository visuals.'}</span></div><div className="editor-fields"><label>Scene title<input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} /></label><label>Cloudy narration<textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} /></label><label>Scene duration <span className="field-suffix">seconds</span><input type="number" min="15" value={selectedScene.duration} onChange={(event) => updateScene('duration', event.target.value)} /></label><button className="secondary-button voice-button" type="button" onClick={previewVoice}>Preview female voice</button></div></article></div></section>
+    </section><aside className="review-panel"><div><p className="eyebrow">Ready to export</p><h2>Local package</h2></div><ul className="checklist"><li className={repository ? 'done' : ''}>Repository source captured</li><li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li><li className="done">Editable Cloudy narration</li><li className={repository?.assets.length ? 'done' : ''}>Source visuals selected</li><li className="done">Captions ready to export</li></ul><div className="export-actions">{isRenderingVideo ? <button className="primary-button" type="button" onClick={cancelVideoExport}>Cancel video render {renderProgress}%</button> : <button className="primary-button" type="button" onClick={() => void exportVideo()}>Download video</button>}<button className="secondary-button" type="button" onClick={exportCaptions}>Download captions</button><button className="secondary-button" type="button" onClick={exportProject}>Download project setup</button></div></aside></section>
   </main>
 }
 

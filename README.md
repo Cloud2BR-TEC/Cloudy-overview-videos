@@ -6,7 +6,7 @@ Last updated: 2026-07-21
 
 -----------------
 
-Cloudy Repository Video Studio is a static GitHub Pages application. Paste a public GitHub repository URL to create an editable Cloudy storyboard from repository metadata, README content, and root image assets. Cloudy can preview narration using a locally available female voice when the browser provides one. Projects remain in browser local storage and can be exported as a reusable project setup, SRT captions, or a YouTube-uploadable WebM video.
+Cloudy Repository Video Studio is a static GitHub Pages application. Paste a public GitHub repository URL to create an editable Cloudy storyboard from repository metadata, README content, and root image assets. Cloudy can preview narration using a locally available female voice when the browser provides one. Projects remain in browser local storage and can be exported as a reusable project setup, SRT captions, or a WebM video.
 
 > [!IMPORTANT]
 > Paste a canonical public repository URL such as `https://github.com/owner/repository`, then select **Generate explainer**.
