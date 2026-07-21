@@ -3,7 +3,7 @@ import './App.css'
 import CloudyAvatar from './CloudyAvatar'
 
 type Repository = { fullName: string; description: string; topics: string[]; language: string | null; defaultBranch: string; license: string; stars: number; openIssues: number; readme: string; assets: string[] }
-type Scene = { id: number; title: string; duration: number; narration: string; visual: string }
+type Scene = { id: number; title: string; duration: number; narration: string; visual: string; bullets: string[] }
 
 const starterRepository = 'https://github.com/Cloud2BR-TEC/ai-academy-101-ml'
 const projectKey = 'cloudy-video-project'
@@ -14,6 +14,15 @@ function wordsToSeconds(text: string) {
 }
 function limitWords(text: string, maxWords: number) {
   return text.trim().split(/\s+/).slice(0, maxWords).join(' ')
+}
+function extractBullets(narration: string): string[] {
+  return narration
+    .replace(/([.!?])\s+/g, '$1\n')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 18 && s.length < 170)
+    .slice(0, 4)
+    .map(s => { const words = s.split(/\s+/); return words.length > 15 ? words.slice(0, 15).join(' ') + '\u2026' : s })
 }
 
 const STARTER_NARRATIONS = [
@@ -29,6 +38,7 @@ const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
   duration: wordsToSeconds(narration),
   narration,
   visual: ['Repository cover and Cloudy host', 'README highlights and course map', 'Annotated repository tree', 'Workflow steps and source imagery', 'Next steps card'][index],
+  bullets: extractBullets(narration),
 }))
 
 function parseRepositoryUrl(value: string) {
@@ -173,11 +183,11 @@ function buildScenes(repo: Repository): Scene[] {
   const outro = limitWords(outroRaw, 140)
 
   return [
-    { id: 1, title: `Meet ${subject}`, duration: wordsToSeconds(intro), narration: intro, visual: 'Repository cover and Cloudy host' },
-    { id: 2, title: 'What you will learn', duration: wordsToSeconds(features), narration: features, visual: 'README highlights and course map' },
-    { id: 3, title: 'Explore the project', duration: wordsToSeconds(structure), narration: structure, visual: repo.assets.length ? 'Repository images and guided source tour' : 'Annotated repository tree' },
-    { id: 4, title: 'Put it into practice', duration: wordsToSeconds(practice), narration: practice, visual: 'Workflow steps and source imagery' },
-    { id: 5, title: 'Keep learning', duration: wordsToSeconds(outro), narration: outro, visual: 'Next steps card' },
+    { id: 1, title: `Meet ${subject}`, duration: wordsToSeconds(intro), narration: intro, visual: 'Repository cover and Cloudy host', bullets: extractBullets(intro) },
+    { id: 2, title: 'What you will learn', duration: wordsToSeconds(features), narration: features, visual: 'README highlights and course map', bullets: extractBullets(features) },
+    { id: 3, title: 'Explore the project', duration: wordsToSeconds(structure), narration: structure, visual: repo.assets.length ? 'Repository images and guided source tour' : 'Annotated repository tree', bullets: extractBullets(structure) },
+    { id: 4, title: 'Put it into practice', duration: wordsToSeconds(practice), narration: practice, visual: 'Workflow steps and source imagery', bullets: extractBullets(practice) },
+    { id: 5, title: 'Keep learning', duration: wordsToSeconds(outro), narration: outro, visual: 'Next steps card', bullets: extractBullets(outro) },
   ]
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
@@ -222,7 +232,7 @@ function App() {
       if (isRepository(saved.repository)) setRepository(saved.repository)
       const savedScenes = saved.scenes
       if (isSceneCollection(savedScenes)) {
-        setScenes(savedScenes)
+        setScenes(savedScenes.map(s => ({ ...s, bullets: s.bullets?.length ? s.bullets : extractBullets(s.narration) })))
         setIsSaved(true)
       }
     } catch { window.localStorage.removeItem(projectKey) }
@@ -292,7 +302,7 @@ function App() {
     setScenes((current) => current.map((scene) => {
       if (scene.id !== selectedScene.id) return scene
       const updated = { ...scene, [field]: value }
-      if (field === 'narration') updated.duration = wordsToSeconds(value)
+      if (field === 'narration') { updated.duration = wordsToSeconds(value); updated.bullets = extractBullets(value) }
       return updated
     }))
     setIsSaved(false)
@@ -351,64 +361,90 @@ function App() {
       const sceneImage = assetImages.length ? assetImages[sceneIndex % assetImages.length] : null
       if (sceneImage) {
         context.save()
-        context.globalAlpha = 0.5 + eased * 0.18
-        drawCoverImage(context, sceneImage, 0, 0, canvas.width, canvas.height, 1 + sceneProgress * 0.08)
+        context.globalAlpha = 0.28
+        drawCoverImage(context, sceneImage, 0, 0, canvas.width, canvas.height, 1 + sceneProgress * 0.04)
         context.restore()
-        const overlay = context.createLinearGradient(0, 0, 0, canvas.height)
-        overlay.addColorStop(0, 'rgba(10, 31, 29, .74)')
-        overlay.addColorStop(0.5, 'rgba(10, 31, 29, .3)')
-        overlay.addColorStop(1, 'rgba(10, 31, 29, .84)')
-        context.fillStyle = overlay
+        context.fillStyle = 'rgba(8, 24, 22, 0.78)'
         context.fillRect(0, 0, canvas.width, canvas.height)
       }
 
       context.fillStyle = `rgba(255, 255, 255, ${0.04 + pulse * 0.05})`
       for (let column = -240; column < canvas.width + 240; column += 120) context.fillRect(column + sceneElapsed * 18, 0, 2, canvas.height)
 
-      context.fillStyle = '#f5f7f3'
-      context.font = '700 32px Manrope, sans-serif'
-      context.fillText('CLOUDY REPOSITORY VIDEO STUDIO', 112, 110)
+      // ── Left panel: accent bar + scene label + slide title + bullets ──
+      const leftW = 1_060
+      context.fillStyle = '#f5a975'
+      context.fillRect(80, 140, 7, 340)
       context.fillStyle = '#f5a975'
       context.font = '700 26px Manrope, sans-serif'
-      context.fillText(`SCENE ${String(scene.id).padStart(2, '0')} OF ${scenes.length}  /  ${durationLabel(scene.duration)}`, 112, 166)
+      context.fillText(`SCENE ${String(scene.id).padStart(2, '0')} OF ${scenes.length}  ·  ${durationLabel(scene.duration)}`, 100, 178)
       scenes.forEach((_, index) => {
-        context.fillStyle = index === sceneIndex ? '#f5a975' : 'rgba(255, 255, 255, .35)'
+        context.fillStyle = index === sceneIndex ? '#f5a975' : 'rgba(255,255,255,.35)'
         context.beginPath()
-        context.arc(112 + index * 26, 196, index === sceneIndex ? 7 : 5, 0, Math.PI * 2)
+        context.arc(100 + index * 24, 208, index === sceneIndex ? 7 : 4, 0, Math.PI * 2)
         context.fill()
       })
-
       context.save()
       context.globalAlpha = eased
-      context.translate((1 - eased) * -70, 0)
+      context.translate((1 - eased) * -60, 0)
       context.fillStyle = '#ffffff'
-      context.font = '800 94px Manrope, sans-serif'
-      const titleLines = wrapCanvasText(context, scene.title, 1_270)
-      titleLines.slice(0, 3).forEach((line, index) => context.fillText(line, 112, 322 + index * 112))
+      context.font = `800 ${scene.title.length > 20 ? 70 : 86}px Manrope, sans-serif`
+      const titleLines = wrapCanvasText(context, scene.title, leftW)
+      titleLines.slice(0, 2).forEach((line, i) => context.fillText(line, 100, 286 + i * 96))
       context.restore()
 
-      context.fillStyle = '#d9ebe2'
-      context.font = '500 38px Manrope, sans-serif'
-      wrapCanvasText(context, scene.visual, 1_080).slice(0, 2).forEach((line, index) => context.fillText(line, 112, 690 + index * 50))
+      // Bullet points
+      const bullets = scene.bullets ?? extractBullets(scene.narration)
+      bullets.forEach((bullet, i) => {
+        const alpha = Math.min(1, (eased - i * 0.15) / 0.4)
+        if (alpha <= 0) return
+        context.save()
+        context.globalAlpha = alpha
+        const by = 510 + i * 80
+        context.fillStyle = '#f5a975'
+        context.beginPath()
+        context.arc(108, by - 9, 6, 0, Math.PI * 2)
+        context.fill()
+        context.fillStyle = '#e4f0e8'
+        context.font = '400 34px Manrope, sans-serif'
+        context.fillText(bullet, 128, by)
+        context.restore()
+      })
 
-      if (repository?.topics.length) {
-        let chipX = 112
-        context.font = '700 22px Manrope, sans-serif'
-        repository.topics.slice(0, 4).forEach((topic) => {
-          const chipWidth = context.measureText(topic).width + 36
-          context.fillStyle = 'rgba(255, 255, 255, .16)'
-          context.fillRect(chipX, 748, chipWidth, 42)
-          context.fillStyle = '#f5f7f3'
-          context.fillText(topic, chipX + 18, 776)
-          chipX += chipWidth + 12
-        })
+      // ── Right panel: repo image ──
+      const rightX = 1_120
+      const rightW = canvas.width - rightX - 60
+      const panelImage = assetImages.length ? assetImages[sceneIndex % assetImages.length] : null
+      if (panelImage) {
+        context.save()
+        context.beginPath()
+        context.roundRect(rightX, 140, rightW, 700, 14)
+        context.clip()
+        context.globalAlpha = 0.92
+        drawCoverImage(context, panelImage, rightX, 140, rightW, 700, 1 + sceneProgress * 0.05)
+        context.restore()
+        const imgOverlay = context.createLinearGradient(rightX, 0, rightX + rightW, 0)
+        imgOverlay.addColorStop(0, 'rgba(10,28,26,.45)')
+        imgOverlay.addColorStop(0.3, 'rgba(10,28,26,0)')
+        context.fillStyle = imgOverlay
+        context.fillRect(rightX, 140, rightW, 700)
       }
 
-      context.fillStyle = 'rgba(10, 31, 29, .76)'
-      context.fillRect(88, 808, 1_744, 190)
+      // Repo name watermark top-right
+      context.fillStyle = 'rgba(255,255,255,.55)'
+      context.font = '500 22px Manrope, sans-serif'
+      context.textAlign = 'right'
+      context.fillText(repository?.fullName ?? 'Cloudy Repository Video Studio', canvas.width - 60, 80)
+      context.textAlign = 'left'
+
+      context.fillStyle = 'rgba(10, 31, 29, .84)'
+      context.fillRect(0, 868, canvas.width, 172)
+      context.fillStyle = 'rgba(245,169,117,.9)'
+      context.font = '700 22px Manrope, sans-serif'
+      context.fillText('CLOUDY IS SAYING:', 80, 906)
       context.fillStyle = '#ffffff'
-      context.font = '500 34px Manrope, sans-serif'
-      wrapCanvasText(context, scene.narration, 1_590).slice(0, 3).forEach((line, index) => context.fillText(line, 132, 872 + index * 44))
+      context.font = '400 30px Manrope, sans-serif'
+      wrapCanvasText(context, scene.narration, 1_750).slice(0, 3).forEach((line, index) => context.fillText(line, 80, 938 + index * 38))
 
       const bob = Math.sin(elapsedSeconds * 1.6) * 10
       const walkX = 1_725 + Math.sin(elapsedSeconds * 0.9) * 90
@@ -519,7 +555,7 @@ function App() {
       <div className="section-heading"><div><p className="eyebrow">Cloudy overview video</p><h1>Choose the repository Cloudy will explain.</h1></div><p className="status" aria-live="polite">{status}</p></div>
       <section className="repository-form"><p className="eyebrow">Public repository</p><label htmlFor="repository-url">GitHub repository URL</label><div className="url-entry"><input id="repository-url" type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" /><button className="primary-button" type="button" onClick={() => void loadRepository(repositoryUrl)} disabled={isLoading}>{isLoading ? 'Reading...' : 'Generate explainer'}</button></div><p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p></section>
       {repository && <section className="repository-card" aria-label="Repository source"><div className="repository-title"><div><p className="eyebrow">Source evidence</p><h2>{repository.fullName}</h2><p>{repository.description}</p></div></div><div className="metadata-grid"><span><small>Default branch</small>{repository.defaultBranch}</span><span><small>Primary language</small>{repository.language ?? 'Not detected'}</span><span><small>License</small>{repository.license}</span><span><small>Signals</small>{repository.stars} stars · {repository.openIssues} issues</span></div>{repository.assets.length > 0 && <div className="asset-strip">{repository.assets.map((asset) => <img key={asset} src={asset} alt="Repository source asset" />)}</div>}{repository.topics.length > 0 && <div className="tags">{repository.topics.slice(0, 6).map((topic) => <span key={topic}>{topic}</span>)}</div>}</section>}
-      {repository ? <section className="story-area"><div className="story-head"><div><p className="eyebrow">Storyboard</p><h2>Cloudy’s explainer</h2></div><div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>{durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small></div></div><div className="story-grid"><ol className="scene-list">{scenes.map((scene) => <li key={scene.id}><button type="button" className={scene.id === selectedScene.id ? 'scene selected' : 'scene'} onClick={() => { setIsPreviewPlaying(false); setSelectedSceneId(scene.id) }}><span className="scene-number">{String(scene.id).padStart(2, '0')}</span><span><strong>{scene.title}</strong><small>{scene.visual}</small></span><time>{durationLabel(scene.duration)}</time></button></li>)}</ol><article className="scene-editor"><div className="preview-stage"><div className={`preview-visual ${isPreviewPlaying ? 'is-playing' : ''} ${previewAsset ? 'has-asset' : 'no-asset'}`}>{previewAsset ? <><img className="source-visual" src={previewAsset} alt="Repository image illustrating this scene" /><span className={`cloudy-avatar ${isSpeaking ? 'speaking' : ''}`}><CloudyAvatar speaking={isSpeaking} size={78} /></span></> : <div className={`cloudy-hero-wrap ${isSpeaking ? 'speaking' : ''}`}><CloudyAvatar speaking={isSpeaking} size={118} /></div>}{isSpeaking && <span className="talk-badge"><span className="talk-bars"><span></span><span></span><span></span></span>Cloudy is speaking</span>}<div className="preview-overlay"><span>{sceneImages.length > 1 ? `Image ${previewImageIndex + 1} of ${sceneImages.length} for this section` : previewAsset ? 'From the repository' : 'No matching repository image'}</span><strong>{selectedScene.title}</strong><p>{selectedScene.narration}</p></div><span className="spark one"></span><span className="spark two"></span></div><div className="scene-caption"><span>Scene {selectedScene.id}</span><strong>{selectedScene.visual}</strong></div></div><div className="preview-controls"><button className="secondary-button" type="button" onClick={() => setIsPreviewPlaying((playing) => !playing)}>{isPreviewPlaying ? 'Pause generated preview' : 'Play generated preview'}</button><span>{isPreviewPlaying ? 'Cloudy is moving through the storyboard.' : 'Play to preview Cloudy and the selected repository visuals.'}</span></div><div className="editor-fields"><label>Scene title<input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} /></label><label>Cloudy narration<textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} /></label><div className="duration-info"><span className="duration-info-label">Read time at 1× speed</span><span className="duration-info-value">{durationLabel(selectedScene.duration)}<small> ({selectedScene.narration.trim().split(/\s+/).filter(Boolean).length} words · {selectedScene.duration}s)</small></span></div><button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()}>Preview female voice</button></div></article></div></section> : <section className="story-placeholder"><p className="eyebrow">Storyboard</p><h2>Generate an explainer to begin</h2><p>Paste a public GitHub repository URL above and select <strong>Generate explainer</strong>. Cloudy will read the repository and build a live, editable storyboard here.</p></section>}
+      {repository ? <section className="story-area"><div className="story-head"><div><p className="eyebrow">Storyboard</p><h2>Cloudy’s explainer</h2></div><div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>{durationLabel(totalDuration)} <small>{inTargetRange ? 'Within 8-12 minute target' : 'Target: 8-12 min'}</small></div></div><div className="story-grid"><ol className="scene-list">{scenes.map((scene) => <li key={scene.id}><button type="button" className={scene.id === selectedScene.id ? 'scene selected' : 'scene'} onClick={() => { setIsPreviewPlaying(false); setSelectedSceneId(scene.id) }}><span className="scene-number">{String(scene.id).padStart(2, '0')}</span><span><strong>{scene.title}</strong><small>{scene.visual}</small></span><time>{durationLabel(scene.duration)}</time></button></li>)}</ol><article className="scene-editor"><div className="preview-stage"><div className={`slide-stage ${isPreviewPlaying ? 'is-playing' : ''}`}>{previewAsset && <img className="slide-bg" src={previewAsset} alt="" />}<div className="slide-left"><p className="slide-scene-label">Scene {String(selectedScene.id).padStart(2,'0')} of {scenes.length}</p><h2 className="slide-title">{selectedScene.title}</h2><ul className="slide-bullets">{(selectedScene.bullets?.length ? selectedScene.bullets : extractBullets(selectedScene.narration)).map((bullet, i) => <li key={i}>{bullet}</li>)}</ul></div><div className="slide-right"><div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}><CloudyAvatar speaking={isSpeaking} size={96} /></div>{isSpeaking && <span className="talk-badge"><span className="talk-bars"><span></span><span></span><span></span></span>Cloudy is speaking</span>}</div><div className="slide-narration"><span className="slide-narration-label">Cloudy narration</span><p>{selectedScene.narration}</p></div></div><div className="scene-caption"><span>Scene {selectedScene.id}</span><strong>{selectedScene.visual}</strong></div></div><div className="preview-controls"><button className="secondary-button" type="button" onClick={() => setIsPreviewPlaying((playing) => !playing)}>{isPreviewPlaying ? 'Pause generated preview' : 'Play generated preview'}</button><span>{isPreviewPlaying ? 'Cloudy is moving through the storyboard.' : 'Play to preview Cloudy and the selected repository visuals.'}</span></div><div className="editor-fields"><label>Scene title<input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} /></label><label>Cloudy narration<textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} /></label><div className="duration-info"><span className="duration-info-label">Read time at 1× speed</span><span className="duration-info-value">{durationLabel(selectedScene.duration)}<small> ({selectedScene.narration.trim().split(/\s+/).filter(Boolean).length} words · {selectedScene.duration}s)</small></span></div><button className="secondary-button voice-button" type="button" onClick={() => void previewVoice()}>Preview female voice</button></div></article></div></section> : <section className="story-placeholder"><p className="eyebrow">Storyboard</p><h2>Generate an explainer to begin</h2><p>Paste a public GitHub repository URL above and select <strong>Generate explainer</strong>. Cloudy will read the repository and build a live, editable storyboard here.</p></section>}
     </section>{repository ? <aside className="review-panel"><div><p className="eyebrow">Ready to export</p><h2>Local package</h2></div><ul className="checklist"><li className="done">Repository source captured</li><li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li><li className="done">Editable Cloudy narration</li><li className={repository.assets.length ? 'done' : ''}>Source visuals selected</li><li className="done">Captions ready to export</li></ul><div className="export-actions">{isRenderingVideo ? <button className="primary-button" type="button" onClick={cancelVideoExport}>Cancel video render {renderProgress}%</button> : <button className="primary-button" type="button" onClick={() => void exportVideo()}>Download video</button>}<button className="secondary-button" type="button" onClick={exportCaptions}>Download captions</button><button className="secondary-button" type="button" onClick={exportProject}>Download project setup</button></div></aside> : <aside className="review-panel placeholder"><div><p className="eyebrow">Ready to export</p><h2>Nothing to export yet</h2><p>Generate an explainer first. Export options for video, captions, and the project file appear once Cloudy has read a repository.</p></div></aside>}</section>
   </main>
 }
