@@ -1,10 +1,8 @@
 # Cloud2BR TEC Hub Cloudy's YouTube Videos
 
-[Cloud2BR-TEC/Cloudy-overview-videos](https://github.com/Cloud2BR-TEC/Cloudy-overview-videos)
+[![GitHub](https://camo.githubusercontent.com/3d6e70cdbf17b7ad9eaa0d34b05c2bc930aa7ae4238ec215244b20ed6917e19f/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f2d2d3138313731373f6c6f676f3d676974687562266c6f676f436f6c6f723d666666666666)](https://github.com/) [Cloud2BR TEC](https://github.com/Cloud2BR-TEC)
 
-[![Total views](https://camo.githubusercontent.com/4e8da418f66f37f31e68bbb1db39e91dab33fc87128f2172966a1d7a457d5377/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f546f74616c25323076696577732d313836352d6c696d65677265656e)](https://camo.githubusercontent.com/4e8da418f66f37f31e68bbb1db39e91dab33fc87128f2172966a1d7a457d5377/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f546f74616c25323076696577732d313836352d6c696d65677265656e)
-
-Refresh Date: 2026-07-13
+Last updated: 2026-07-21
 
 ## GitHub Pages Application
 
