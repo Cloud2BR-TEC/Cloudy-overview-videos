@@ -16,6 +16,8 @@ type Repository = {
 }
 type Scene = {
   id: number
+  section: number
+  slideInSection: number
   title: string
   duration: number
   narration: string
@@ -28,10 +30,13 @@ type Scene = {
 type WorkflowStep = 'source' | 'story' | 'voice' | 'export'
 
 const starterRepository = 'https://github.com/Cloud2BR-TEC/ai-academy-101-ml'
+const SLIDES_PER_SECTION = 10
+const TEMPLATE_SLIDE_SECONDS = 12
+const TARGET_NARRATION_WORDS = 26
 
 function wordsToSeconds(text: string) {
   const words = text.trim().split(/\s+/).filter(Boolean).length
-  return Math.max(15, Math.round((words / 130) * 60))
+  return Math.min(15, Math.max(10, Math.round((words / 130) * 60)))
 }
 function limitWords(text: string, maxWords: number) {
   return text.trim().split(/\s+/).slice(0, maxWords).join(' ')
@@ -58,6 +63,8 @@ const STARTER_NARRATIONS = [
 ]
 const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
   id: index + 1,
+  section: index + 1,
+  slideInSection: 1,
   title: ['Welcome to the repository', 'What you will learn', 'Explore the project', 'Put it into practice', 'Keep learning'][index],
   duration: wordsToSeconds(narration),
   narration,
@@ -184,28 +191,26 @@ function loadImage(src: string) {
     image.src = src
   })
 }
-function splitIntoSlides(text: string, targetWords: number): string[] {
-  const sentences = text
-    .trim()
-    .replace(/([.!?])\s+/g, '$1\n')
-    .split('\n')
-    .filter((s) => s.trim().length > 8)
-  const slides: string[] = []
-  let current: string[] = []
-  let count = 0
-  for (const sentence of sentences) {
-    const words = sentence.trim().split(/\s+/).length
-    if (count > 0 && count + words > targetWords * 1.25) {
-      slides.push(current.join(' '))
-      current = [sentence]
-      count = words
-    } else {
-      current.push(sentence)
-      count += words
-    }
+function buildTemplateNarration(primaryText: string, repositoryText: string, slideIndex: number) {
+  const sentences = `${primaryText} ${repositoryText}`
+    .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+    ?.map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.split(/\s+/).length > 3) ?? []
+  if (!sentences.length) return 'This slide uses the repository metadata and available source documentation as its reference.'
+
+  const narration: string[] = []
+  let wordCount = 0
+  let cursor = slideIndex % sentences.length
+  let attempts = 0
+  while (wordCount < TARGET_NARRATION_WORDS && attempts < Math.max(sentences.length * 2, 6)) {
+    const remaining = TARGET_NARRATION_WORDS + 4 - wordCount
+    const words = sentences[cursor].split(/\s+/).slice(0, remaining)
+    narration.push(words.join(' '))
+    wordCount += words.length
+    cursor = (cursor + 1) % sentences.length
+    attempts += 1
   }
-  if (current.length) slides.push(current.join(' '))
-  return slides.filter((s) => s.trim().split(/\s+/).length > 8)
+  return narration.join(' ').trim()
 }
 function buildScenes(repo: Repository): Scene[] {
   const subject = repo.fullName.split('/')[1].replaceAll('-', ' ')
@@ -213,31 +218,36 @@ function buildScenes(repo: Repository): Scene[] {
   const find = (pattern: RegExp) => sections.find((s) => pattern.test(s.heading) && s.body.trim().split(/\s+/).length > 8)?.body ?? ''
   const fallback = (idx: number) => sections[idx]?.body ?? ''
   const MAX = 800
-  const WORDS_PER_SLIDE = 130
+  const repositoryText = sections.map((section) => section.body).join(' ') || repo.description
 
   const groups = [
     {
       baseTitle: `Meet ${subject}`,
+      slideTitles: ['Overview', 'Purpose', 'Audience', 'Repository context', 'Main topic', 'Technology', 'Project scope', 'Documentation map', 'Source visuals', 'Section recap'],
       visual: 'Repository cover and Cloudy host',
       text: limitWords([repo.description ?? '', repo.language ? `Built with ${repo.language}.` : '', repo.topics.length ? `Topics: ${repo.topics.slice(0, 4).join(', ')}.` : '', fallback(0)].filter(Boolean).join(' '), MAX),
     },
     {
       baseTitle: 'What you will learn',
+      slideTitles: ['Learning goals', 'Core concepts', 'Key features', 'Important terminology', 'Expected outcomes', 'Knowledge map', 'Repository highlights', 'Documentation signals', 'Practical context', 'Section recap'],
       visual: 'README highlights and course map',
       text: limitWords(find(/features?|overview|about\b|what\s+(it|this|we|you)|highlights?|key\s+point|objective|goal|purpose/i) || fallback(1) || `This repository contains ${repo.language || 'source'} code${repo.topics.length ? ` focused on ${repo.topics.slice(0, 3).join(', ')}` : ''}.`, MAX),
     },
     {
       baseTitle: 'Explore the project',
+      slideTitles: ['Project structure', 'Architecture', 'Main components', 'Configuration', 'Dependencies', 'Setup path', 'Documentation', 'Repository assets', 'Project workflow', 'Section recap'],
       visual: repo.assets.length ? 'Repository images and guided source tour' : 'Annotated repository tree',
       text: limitWords(find(/install|setup|getting[\s-]started|structure|architecture|prerequisites?|requirements?|configur|depend/i) || fallback(2) || 'Follow the repository documentation and README to understand the project structure.', MAX),
     },
     {
       baseTitle: 'Put it into practice',
+      slideTitles: ['Getting started', 'First step', 'Core workflow', 'Example path', 'Using the project', 'Checking results', 'Common sequence', 'Source reference', 'Practical outcome', 'Section recap'],
       visual: 'Workflow steps and source imagery',
       text: limitWords(find(/usage|example|how[\s-]to|tutorial|guide|quickstart|api\b|demo|walkthrough/i) || fallback(3) || `Clone the repository and follow the workflow described in the documentation.`, MAX),
     },
     {
       baseTitle: 'Keep learning',
+      slideTitles: ['Review', 'Key takeaway', 'Further reading', 'Related resources', 'Open issues', 'Contributing', 'Next experiment', 'Repository reference', 'Suggested next step', 'Final recap'],
       visual: 'Next steps card',
       text: limitWords(find(/contribut|resource|further|next[\s-]step|learn[\s-]more|reference|acknowledgment|credit|community|roadmap/i) || sections[sections.length - 1]?.body || `Continue learning by exploring open issues and related projects.`, MAX),
     },
@@ -245,17 +255,18 @@ function buildScenes(repo: Repository): Scene[] {
 
   const result: Scene[] = []
   let id = 1
-  for (const group of groups) {
-    const slides = splitIntoSlides(group.text, WORDS_PER_SLIDE)
-    const all = slides.length ? slides : [group.text || group.baseTitle]
-    all.forEach((narration, i) => {
-      const title = all.length > 1 ? `${group.baseTitle} – Part ${i + 1}` : group.baseTitle
+  groups.forEach((group, groupIndex) => {
+    group.slideTitles.forEach((slideTitle, slideIndex) => {
+      const narration = buildTemplateNarration(group.text, repositoryText, groupIndex * SLIDES_PER_SECTION + slideIndex)
+      const title = `${group.baseTitle}: ${slideTitle}`
       const asset = repo.assets.length ? repo.assets[(id - 1) % repo.assets.length] : null
       const assetLabel = asset ? repositoryAssetLabel(asset) : 'No repository visual selected'
       result.push({
         id: id++,
+        section: groupIndex + 1,
+        slideInSection: slideIndex + 1,
         title,
-        duration: wordsToSeconds(narration),
+        duration: TEMPLATE_SLIDE_SECONDS,
         narration,
         visual: asset ? `Repository image: ${assetLabel}` : group.visual,
         bullets: extractBullets(narration),
@@ -264,19 +275,8 @@ function buildScenes(repo: Repository): Scene[] {
         assetLabel,
       })
     })
-  }
-  return result.map((scene, sceneIndex) => {
-    const assignedAssets = repo.assets.filter((_, assetIndex) => assetIndex % result.length === sceneIndex)
-    const assets = assignedAssets.length ? assignedAssets : scene.assets
-    const asset = assets[0] ?? null
-    return {
-      ...scene,
-      asset,
-      assets,
-      assetLabel: asset ? repositoryAssetLabel(asset) : scene.assetLabel,
-      visual: assets.length ? `${assets.length} repository visual${assets.length === 1 ? '' : 's'}` : scene.visual,
-    }
   })
+  return result
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
   const scale = Math.max(width / image.width, height / image.height) * zoom
@@ -377,8 +377,8 @@ function App() {
       setRepository(newRepo)
       const generatedScenes = buildScenes(newRepo)
       setScenes(generatedScenes)
-      const imageNote = assets.length ? `Used ${assets.length} repository image${assets.length === 1 ? '' : 's'} across ${generatedScenes.length} Markdown slides.` : 'No images found — Cloudy will present with a branded placeholder.'
-      setStatus(`Storyboard ready. ${imageNote}`)
+      const imageNote = assets.length ? `Cycling ${assets.length} repository image${assets.length === 1 ? '' : 's'}, one per slide.` : 'No images found — Cloudy will present with a branded placeholder.'
+      setStatus(`Storyboard ready: ${generatedScenes.length} slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${imageNote}`)
     } catch {
       setRepository(null)
       setStatus('The repository could not be read. Check repository access and try again.')
@@ -506,7 +506,7 @@ function App() {
       context.fillRect(80, 140, 7, 340)
       context.fillStyle = '#f5a975'
       context.font = '700 26px Manrope, sans-serif'
-      context.fillText(`SECTION ${String(scene.id).padStart(2, '0')} OF ${scenes.length}  ·  ${durationLabel(scene.duration)}`, 100, 178)
+      context.fillText(`SECTION ${scene.section} OF 5  ·  SLIDE ${scene.slideInSection} OF ${SLIDES_PER_SECTION}  ·  ${scene.duration} SEC`, 100, 178)
       scenes.forEach((_, index) => {
         context.fillStyle = index === sceneIndex ? '#f5a975' : 'rgba(255,255,255,.35)'
         context.beginPath()
@@ -859,7 +859,7 @@ function App() {
                           setSelectedSceneId(scene.id)
                         }}
                       >
-                        <span className="scene-number">{String(scene.id).padStart(2, '0')}</span>
+                        <span className="scene-number">{scene.section}.{String(scene.slideInSection).padStart(2, '0')}</span>
                         <span>
                           <strong>{scene.title}</strong>
                           <small>{scene.visual}</small>
@@ -901,7 +901,7 @@ function App() {
                   <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>
                     <div className="slide-left markdown-slide-copy">
                       <p className="slide-scene-label">
-                        Section {String(presentedScene.id).padStart(2, '0')} of {scenes.length}
+                        Section {presentedScene.section} of 5 · Slide {presentedScene.slideInSection} of {SLIDES_PER_SECTION} · {presentedScene.duration} sec
                       </p>
                       <h2 className="slide-title"><span aria-hidden="true">#</span> {presentedScene.title}</h2>
                       <ul className="slide-bullets">
@@ -968,7 +968,7 @@ function App() {
                       <textarea rows={4} value={selectedScene.narration} onChange={(event) => updateScene('narration', event.target.value)} />
                     </label>
                     <div className="duration-info">
-                      <span className="duration-info-label">Read time at 1× speed</span>
+                      <span className="duration-info-label">Slide time · 10-15 second template</span>
                       <span className="duration-info-value">
                         {durationLabel(selectedScene.duration)}
                         <small>

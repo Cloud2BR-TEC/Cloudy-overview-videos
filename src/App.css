@@ -119,6 +119,9 @@
 .checklist li.done::before { border-color: #278064; background: #278064; box-shadow: inset 0 0 0 3px #d9eee5; }
 .story-placeholder { border-color: #7fa5bb; background: #d9eaf2; color: #35586b; }
 .story-placeholder h2 { color: #102f43; }
+.story-grid .scene-list { max-height: 760px; overflow-y: auto; scrollbar-color: #6f99b1 #c9dfeb; }
+.scene-editor > .video-scene-progress { flex-wrap: nowrap; overflow-x: auto; scrollbar-color: #6f99b1 #c8deea; }
+.scene-editor > .video-scene-progress .vsp-dot { flex: 0 0 auto; }
 
 .unified-stage { grid-template-columns: minmax(190px, 1fr) minmax(150px, .72fr) 116px; grid-template-rows: minmax(220px, 1fr) auto; }
 .unified-stage .slide-left { grid-column: 1; grid-row: 1; }
