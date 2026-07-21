@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import './App.css'
 import CloudyAvatar from './CloudyAvatar'
 
@@ -21,6 +21,9 @@ type Scene = {
   narration: string
   visual: string
   bullets: string[]
+  asset: string | null
+  assets: string[]
+  assetLabel: string
 }
 type WorkflowStep = 'source' | 'story' | 'voice' | 'export'
 
@@ -60,6 +63,9 @@ const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
   narration,
   visual: ['Repository cover and Cloudy host', 'README highlights and course map', 'Annotated repository tree', 'Workflow steps and source imagery', 'Next steps card'][index],
   bullets: extractBullets(narration),
+  asset: null,
+  assets: [],
+  assetLabel: 'No repository visual selected',
 }))
 
 function parseRepositoryUrl(value: string) {
@@ -91,6 +97,14 @@ function repositoryImageScore(path: string) {
   if (/cover|hero|banner|screenshot|preview|demo|architecture|diagram|workflow/.test(normalized)) score += 3
   if (/logo|icon|avatar|favicon/.test(normalized)) score -= 2
   return score
+}
+function repositoryAssetLabel(url: string) {
+  try {
+    const fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? 'Repository visual')
+    return fileName.replace(/[-_]+/g, ' ').replace(/\.[^.]+$/, '')
+  } catch {
+    return 'Repository visual'
+  }
 }
 function extractReadmeImageUrls(markdown: string, owner: string, repo: string, branch: string) {
   const urls = new Set<string>()
@@ -236,17 +250,33 @@ function buildScenes(repo: Repository): Scene[] {
     const all = slides.length ? slides : [group.text || group.baseTitle]
     all.forEach((narration, i) => {
       const title = all.length > 1 ? `${group.baseTitle} – Part ${i + 1}` : group.baseTitle
+      const asset = repo.assets.length ? repo.assets[(id - 1) % repo.assets.length] : null
+      const assetLabel = asset ? repositoryAssetLabel(asset) : 'No repository visual selected'
       result.push({
         id: id++,
         title,
         duration: wordsToSeconds(narration),
         narration,
-        visual: group.visual,
+        visual: asset ? `Repository image: ${assetLabel}` : group.visual,
         bullets: extractBullets(narration),
+        asset,
+        assets: asset ? [asset] : [],
+        assetLabel,
       })
     })
   }
-  return result
+  return result.map((scene, sceneIndex) => {
+    const assignedAssets = repo.assets.filter((_, assetIndex) => assetIndex % result.length === sceneIndex)
+    const assets = assignedAssets.length ? assignedAssets : scene.assets
+    const asset = assets[0] ?? null
+    return {
+      ...scene,
+      asset,
+      assets,
+      assetLabel: asset ? repositoryAssetLabel(asset) : scene.assetLabel,
+      visual: assets.length ? `${assets.length} repository visual${assets.length === 1 ? '' : 's'}` : scene.visual,
+    }
+  })
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
   const scale = Math.max(width / image.width, height / image.height) * zoom
@@ -266,14 +296,12 @@ function App() {
   const [isRenderingVideo, setIsRenderingVideo] = useState(false)
   const [renderProgress, setRenderProgress] = useState(0)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [previewImageIndex, setPreviewImageIndex] = useState(0)
   const [isVideoPreviewPlaying, setIsVideoPreviewPlaying] = useState(false)
   const [videoPreviewSceneIdx, setVideoPreviewSceneIdx] = useState(0)
   const renderAbortRef = useRef(false)
   const videoPreviewAbortRef = useRef(false)
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
-  const selectedSceneIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
   const narrationReady = scenes.length > 0 && scenes.every((scene) => scene.title.trim().length > 0 && scene.narration.trim().length > 0)
   const visualsReady = Boolean(repository?.assets.length)
@@ -283,25 +311,9 @@ function App() {
   const apiHeaders: Record<string, string> = {
     Accept: 'application/vnd.github+json',
   }
-  const imgsPerScene = repository?.assets.length ? Math.max(1, Math.ceil(repository.assets.length / scenes.length)) : 1
   const videoPreviewScene = scenes[videoPreviewSceneIdx] ?? scenes[0]
-  const videoPreviewAsset = repository?.assets.length ? (repository.assets.slice(videoPreviewSceneIdx * imgsPerScene, videoPreviewSceneIdx * imgsPerScene + imgsPerScene)[0] ?? null) : null
-  const sceneImages = repository?.assets.length ? repository.assets.slice(selectedSceneIndex * imgsPerScene, selectedSceneIndex * imgsPerScene + imgsPerScene) : []
-  const previewAsset = sceneImages.length ? sceneImages[previewImageIndex % sceneImages.length] : null
   const presentedScene = isVideoPreviewPlaying ? videoPreviewScene : selectedScene
-  const presentedAsset = isVideoPreviewPlaying ? videoPreviewAsset : previewAsset
-
-  useEffect(() => {
-    setPreviewImageIndex(0)
-  }, [selectedSceneId])
-
-  useEffect(() => {
-    if (sceneImages.length < 2) return
-    const interval = window.setInterval(() => {
-      setPreviewImageIndex((current) => (current + 1) % sceneImages.length)
-    }, 2_200)
-    return () => window.clearInterval(interval)
-  }, [sceneImages.length, selectedSceneId])
+  const presentedAsset = presentedScene.asset
 
   async function loadRepository(value: string) {
     const parsed = parseRepositoryUrl(value)
@@ -363,8 +375,9 @@ function App() {
       }
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
-      setScenes(buildScenes(newRepo))
-      const imageNote = assets.length ? `Found ${assets.length} image${assets.length === 1 ? '' : 's'} from the repository.` : 'No images found — Cloudy will present with a branded placeholder.'
+      const generatedScenes = buildScenes(newRepo)
+      setScenes(generatedScenes)
+      const imageNote = assets.length ? `Used ${assets.length} repository image${assets.length === 1 ? '' : 's'} across ${generatedScenes.length} Markdown slides.` : 'No images found — Cloudy will present with a branded placeholder.'
       setStatus(`Storyboard ready. ${imageNote}`)
     } catch {
       setRepository(null)
@@ -429,6 +442,7 @@ function App() {
     setStatus('Loading repository visuals for your video...')
     const cloudyImage = await loadImage(cloudyLogo).catch(() => null)
     const assetImages = repository?.assets.length ? await Promise.all(repository.assets.map((asset) => loadImage(asset).catch(() => null))) : []
+    const assetImageByUrl = new Map(repository?.assets.map((asset, index) => [asset, assetImages[index]]) ?? [])
     const stream = canvas.captureStream(30)
     const recorder = new MediaRecorder(stream, {
       mimeType,
@@ -472,7 +486,8 @@ function App() {
       context.fillStyle = gradient
       context.fillRect(0, 0, canvas.width, canvas.height)
 
-      const sceneImage = assetImages.length ? assetImages[sceneIndex % assetImages.length] : null
+      const sceneAssetImages = scene.assets.map((asset) => assetImageByUrl.get(asset)).filter((image): image is HTMLImageElement => Boolean(image))
+      const sceneImage = sceneAssetImages.length ? sceneAssetImages[Math.min(sceneAssetImages.length - 1, Math.floor(sceneProgress * sceneAssetImages.length))] : null
       if (sceneImage) {
         context.save()
         context.globalAlpha = 0.28
@@ -528,7 +543,7 @@ function App() {
       // ── Right panel: repo image ──
       const rightX = 1_120
       const rightW = canvas.width - rightX - 60
-      const panelImage = assetImages.length ? assetImages[sceneIndex % assetImages.length] : null
+      const panelImage = sceneImage
       if (panelImage) {
         context.save()
         context.beginPath()
@@ -884,18 +899,29 @@ function App() {
                     </div>
                   </div>
                   <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>
-                    {presentedAsset && <img className="slide-bg" src={presentedAsset} alt="" />}
-                    <div className="slide-left">
+                    <div className="slide-left markdown-slide-copy">
                       <p className="slide-scene-label">
                         Section {String(presentedScene.id).padStart(2, '0')} of {scenes.length}
                       </p>
-                      <h2 className="slide-title">{presentedScene.title}</h2>
+                      <h2 className="slide-title"><span aria-hidden="true">#</span> {presentedScene.title}</h2>
                       <ul className="slide-bullets">
                         {(presentedScene.bullets?.length ? presentedScene.bullets : extractBullets(presentedScene.narration)).map((bullet, i) => (
                           <li key={i}>{bullet}</li>
                         ))}
                       </ul>
                     </div>
+                    <figure className={`slide-source-visual ${presentedAsset ? '' : 'empty'}`}>
+                      {presentedScene.assets.length ? (
+                        <div className={`slide-source-grid count-${Math.min(presentedScene.assets.length, 4)}`}>
+                          {presentedScene.assets.map((asset) => (
+                            <img key={asset} src={asset} alt={`Repository visual: ${repositoryAssetLabel(asset)}`} />
+                          ))}
+                        </div>
+                      ) : (
+                        <span>No repository image available</span>
+                      )}
+                      <figcaption>{presentedScene.assets.length} repository visual{presentedScene.assets.length === 1 ? '' : 's'} / {presentedScene.assetLabel}</figcaption>
+                    </figure>
                     <div className="slide-right">
                       <div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}>
                         <CloudyAvatar speaking={isSpeaking} size={96} />
