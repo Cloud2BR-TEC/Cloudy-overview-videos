@@ -162,9 +162,12 @@ const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
 
 function parseRepositoryUrl(value: string) {
   try {
-    const url = new URL(value.trim())
+    const trimmed = value.trim()
+    const copiedUrl = trimmed.match(/https?:\/\/(?:www\.)?github\.com\/[^\s)\]]+/i)?.[0] ?? trimmed
+    const url = new URL(copiedUrl)
     const segments = url.pathname.replace(/^\/+|\/+$/g, '').split('/')
-    return url.hostname === 'github.com' && segments.length === 2 && segments[0] && segments[1] ? { owner: segments[0], repo: segments[1].replace(/\.git$/, '') } : null
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '')
+    return hostname === 'github.com' && segments.length >= 2 && segments[0] && segments[1] ? { owner: segments[0], repo: segments[1].replace(/\.git$/, '') } : null
   } catch {
     return null
   }
@@ -522,6 +525,8 @@ function App() {
   const renderAbortRef = useRef(false)
   const renderAbortControllerRef = useRef<AbortController | null>(null)
   const videoPreviewAbortRef = useRef(false)
+  const repositoryLoadAbortRef = useRef<AbortController | null>(null)
+  const repositoryLoadIdRef = useRef(0)
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
   const selectedSceneIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
@@ -543,19 +548,29 @@ function App() {
   async function loadRepository(value: string) {
     const parsed = parseRepositoryUrl(value)
     if (!parsed) {
-      setStatus('Use a canonical URL such as https://github.com/owner/repository.')
+      setStatus('Paste a GitHub repository URL such as https://github.com/owner/repository.')
       return
     }
+    repositoryLoadAbortRef.current?.abort()
+    const loadId = ++repositoryLoadIdRef.current
+    const loadController = new AbortController()
+    repositoryLoadAbortRef.current = loadController
+    const timeoutId = window.setTimeout(() => loadController.abort('timeout'), 30_000)
     setIsLoading(true)
     setStatus('Reviewing the repository README, folders, and images...')
     try {
       const [repositoryResponse, readmeResponse] = await Promise.all([
         fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
           headers: apiHeaders,
+          signal: loadController.signal,
         }),
-        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/readme`, { headers: apiHeaders }),
+        fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/readme`, { headers: apiHeaders, signal: loadController.signal }),
       ])
-      if (!repositoryResponse.ok) throw new Error('Repository unavailable')
+      if (!repositoryResponse.ok) {
+        if (repositoryResponse.status === 404) throw new Error('Repository not found. Confirm that it is public and the URL is correct.')
+        if (repositoryResponse.status === 403) throw new Error('GitHub API access is temporarily limited. Wait a few minutes and try again.')
+        throw new Error(`GitHub could not read this repository (${repositoryResponse.status}).`)
+      }
       const data = (await repositoryResponse.json()) as {
         full_name: string
         description: string | null
@@ -569,7 +584,9 @@ function App() {
       const readmeData = readmeResponse.ok ? ((await readmeResponse.json()) as { content?: string }) : null
       const readmeText = readmeData?.content ? decodeBase64(readmeData.content) : ''
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
-      const treeResponse = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(data.default_branch)}?recursive=1`, { headers: apiHeaders })
+      setStatus('Repository found. Reading English documentation and visuals...')
+      const treeResponse = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(data.default_branch)}?recursive=1`, { headers: apiHeaders, signal: loadController.signal })
+      if (!treeResponse.ok) throw new Error(`GitHub could not read the repository files (${treeResponse.status}).`)
       const treeData = treeResponse.ok
         ? ((await treeResponse.json()) as {
             tree?: Array<{ path: string; type: string; size?: number }>
@@ -584,9 +601,10 @@ function App() {
       const documentationTexts = await Promise.all(
         documentationPaths.map(async (path) => {
           try {
-            const response = await fetch(`https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(data.default_branch)}/${path.split('/').map(encodeURIComponent).join('/')}`)
+            const response = await fetch(`https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(data.default_branch)}/${path.split('/').map(encodeURIComponent).join('/')}`, { signal: loadController.signal })
             return response.ok ? response.text() : ''
           } catch {
+            if (loadController.signal.aborted) throw new DOMException('Repository load aborted', 'AbortError')
             return ''
           }
         }),
@@ -628,10 +646,19 @@ function App() {
       const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}`)
     } catch (error) {
+      if (loadId !== repositoryLoadIdRef.current) return
       setRepository(null)
-      setStatus(error instanceof Error ? error.message : 'The repository could not be read. Check repository access and try again.')
+      if (loadController.signal.reason === 'timeout') {
+        setStatus('GitHub took too long to respond. Check your connection and try again.')
+      } else if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setStatus(error instanceof Error ? error.message : 'The repository could not be read. Check repository access and try again.')
+      }
     } finally {
-      setIsLoading(false)
+      window.clearTimeout(timeoutId)
+      if (loadId === repositoryLoadIdRef.current) {
+        repositoryLoadAbortRef.current = null
+        setIsLoading(false)
+      }
     }
   }
 
@@ -1081,17 +1108,17 @@ function App() {
               {status}
             </p>
           </div>
-          <section className="repository-form" id="source-section">
+          <form className="repository-form" id="source-section" onSubmit={(event) => { event.preventDefault(); void loadRepository(repositoryUrl) }}>
             <p className="eyebrow">Public repository</p>
             <label htmlFor="repository-url">GitHub repository URL</label>
             <div className="url-entry">
-              <input id="repository-url" type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" />
-              <button className="primary-button" type="button" onClick={() => void loadRepository(repositoryUrl)} disabled={isLoading}>
+              <input id="repository-url" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" />
+              <button className="primary-button" type="submit" disabled={isLoading}>
                 {isLoading ? 'Reading...' : 'Generate explainer'}
               </button>
             </div>
             <p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p>
-          </section>
+          </form>
           {repository && (
             <section className="repository-card" aria-label="Repository source">
               <div className="repository-title">

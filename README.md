@@ -11,6 +11,8 @@ Cloudy Repository Video Studio is a static GitHub Pages application. Paste a pub
 > [!IMPORTANT]
 > Paste a canonical public repository URL such as `https://github.com/owner/repository`, then select **Generate explainer**.
 
+The source field also accepts copied GitHub tree or file-page URLs, `www.github.com` links, trailing slashes, and Markdown-style links. Select **Generate explainer** or press Enter. Requests time out with a visible message instead of remaining indefinitely in the reading state.
+
 Cloudy reads public GitHub API data to assemble the storyboard. Slide titles, bullets, and narration come from substantive sections in the main README and English or default-language Markdown under `docs/`; localized non-English docs are ignored. Repository layout, configuration, automation, contribution, license, and file-path details are not used as presentation filler. Internal editorial directions are never shown as presentation content. Each slide reserves different material evidence, and substantially similar slide content fails validation instead of being repeated. Repository planning files named `agenda.yml` or `agenda.yaml` are excluded. Cloudy does not write to repositories or upload content. Private repositories cannot be used in this browser-only version.
 
 Slide imagery follows the documentation's own section placement. Cloudy uses an image only when that image is embedded in the same Markdown section as the slide content; otherwise, the slide uses a neutral material-focused placeholder instead of an unrelated repository image.
