@@ -129,7 +129,11 @@
 .scene-arrow:focus-visible { outline: 3px solid rgba(13, 111, 158, .25); outline-offset: 2px; }
 .scene-arrow:disabled { border-color: #9cb8c7; background: #d9e7ee; color: #7893a1; cursor: not-allowed; }
 .scene-picker > span { overflow: hidden; color: #35576a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.story-grid .scene-editor { min-width: 0; padding: 24px; }
+.story-grid .scene-editor { display: flex; min-width: 0; padding: 24px; flex-direction: column; }
+.story-grid .scene-editor > .editor-fields { order: 1; margin: 0 0 18px; }
+.story-grid .scene-editor > .presentation-toolbar { order: 2; }
+.story-grid .scene-editor > .slide-stage { order: 3; }
+.story-grid .scene-editor > .video-scene-progress { order: 4; }
 .scene-editor > .video-scene-progress { flex-wrap: nowrap; overflow-x: auto; scrollbar-color: #6f99b1 #c8deea; }
 .scene-editor > .video-scene-progress .vsp-dot { flex: 0 0 auto; }
 
