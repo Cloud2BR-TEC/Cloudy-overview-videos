@@ -27,6 +27,7 @@ type Scene = {
   asset: string | null
   assets: string[]
   assetLabel: string
+  assetMatch: 'authored' | null
 }
 type WorkflowStep = 'source' | 'story' | 'voice' | 'export'
 
@@ -156,6 +157,7 @@ const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
   asset: null,
   assets: [],
   assetLabel: 'No repository visual selected',
+  assetMatch: null,
 }))
 
 function parseRepositoryUrl(value: string) {
@@ -222,26 +224,18 @@ function repositoryFileScore(path: string) {
 }
 function repositoryAssetLabel(url: string) {
   try {
-    const fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? 'Repository visual')
+    const pathname = url.startsWith('http') ? new URL(url).pathname : url.replace(/[?#].*$/, '')
+    const fileName = decodeURIComponent(pathname.split('/').pop() ?? 'Repository visual')
     return fileName.replace(/[-_]+/g, ' ').replace(/\.[^.]+$/, '')
   } catch {
     return 'Repository visual'
   }
 }
-function repositoryAssetSubject(label: string) {
-  return label.split(/\s+/).slice(0, 5).join(' ')
-}
-function chooseRelevantAsset(assets: string[], slideTitle: string, slideText: string, usage: Map<string, number>) {
+function chooseRelevantAsset(assets: string[], sectionImageLabels: string[]) {
   if (!assets.length) return null
-  const context = `${slideTitle} ${SLIDE_FOCUS[slideTitle] ?? ''} ${slideText}`
-  return [...assets].sort((left, right) => {
-    const score = (asset: string) => {
-      const label = repositoryAssetLabel(asset)
-      const relevance = topicOverlap(context, label) + topicOverlap(label, context)
-      return relevance * 20 - (usage.get(asset) ?? 0)
-    }
-    return score(right) - score(left) || assets.indexOf(left) - assets.indexOf(right)
-  })[0]
+  const authoredAsset = assets.find((asset) => sectionImageLabels.some((label) => normalizedSentence(repositoryAssetLabel(asset)) === normalizedSentence(label)))
+  if (authoredAsset) return { asset: authoredAsset, match: 'authored' as const }
+  return null
 }
 function extractReadmeImageUrls(markdown: string, owner: string, repo: string, branch: string) {
   const urls = new Set<string>()
@@ -268,7 +262,7 @@ function isNarratableText(value: string) {
   const text = value.replace(/\s+/g, ' ').trim()
   return text.split(/\s+/).length >= 4 && !isRepositoryNoise(text)
 }
-function parseReadmeSections(readme: string): Array<{ heading: string; body: string }> {
+function parseReadmeSections(readme: string): Array<{ heading: string; body: string; imageLabels: string[] }> {
   const text = readme
     .replace(/^.*agenda\.ya?ml.*$/gim, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
@@ -277,14 +271,17 @@ function parseReadmeSections(readme: string): Array<{ heading: string; body: str
     .replace(/<div\b[^>]*>[\s\S]*?(?:badge|shields\.io)[\s\S]*?<\/div>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/\[[^\]]+]\(https?:\/\/(?:www\.)?github\.com\/(?:Cloud2BR-TEC\/?|)?\)/gi, ' ')
-    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
-    .replace(/<img\b[^>]*>/gi, ' ')
     .replace(/`[^`\n]+`/g, ' ')
   const lines = text.split('\n')
-  const sections: Array<{ heading: string; body: string }> = []
+  const sections: Array<{ heading: string; body: string; imageLabels: string[] }> = []
   let heading = ''
   let bodyLines: string[] = []
   const flush = () => {
+    const rawBody = bodyLines.join('\n')
+    const imageLabels = [
+      ...Array.from(rawBody.matchAll(/!\[[^\]]*]\(([^)\s]+)/g), (match) => repositoryAssetLabel(match[1])),
+      ...Array.from(rawBody.matchAll(/<img[^>]*src=["']([^"']+)["']/gi), (match) => repositoryAssetLabel(match[1])),
+    ].filter((label) => label !== 'Repository visual')
     const body = bodyLines
       .map((l) =>
         l
@@ -306,7 +303,7 @@ function parseReadmeSections(readme: string): Array<{ heading: string; body: str
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim()
-    if (body.length > 15) sections.push({ heading, body })
+    if (body.length > 15) sections.push({ heading, body, imageLabels })
     bodyLines = []
   }
   for (const line of lines) {
@@ -394,11 +391,8 @@ function buildEvidenceBullets(evidence: string, slideTitle: string) {
   const summary = words.length > 20 ? `${words.slice(0, 13).join(' ')}\u2026 ${words.slice(-6).join(' ')}` : words.join(' ')
   return [`${slideTitle}: ${summary}`]
 }
-function buildTemplateNarration(evidence: string, assetLabel: string) {
-  const visualSubject = assetLabel === 'No repository visual selected' ? '' : repositoryAssetSubject(assetLabel)
-  const visualBridge = visualSubject ? `The ${visualSubject} image provides a visual reference for this repository topic.` : ''
-  const evidenceSummary = limitWords(evidence, TARGET_NARRATION_WORDS + 4)
-  return [evidenceSummary, visualBridge].filter(Boolean).join(' ').trim()
+function buildTemplateNarration(evidence: string) {
+  return limitWords(evidence, TARGET_NARRATION_WORDS + 4)
 }
 function hasUniqueSlideContent(scenes: Scene[]) {
   const titleKeys = scenes.map((scene) => normalizedSentence(scene.title)).filter(Boolean)
@@ -411,13 +405,9 @@ function hasUniqueSlideContent(scenes: Scene[]) {
   )
 }
 function hasVisualNarrationAlignment(scenes: Scene[]) {
-  return scenes.every((scene) => {
-    if (!scene.asset) return false
-    const subject = repositoryAssetSubject(scene.assetLabel)
-    return normalizedSentence(scene.narration).includes(normalizedSentence(subject)) || topicOverlap(scene.narration, scene.assetLabel) > 0
-  })
+  return scenes.every((scene) => !scene.asset || scene.assetMatch === 'authored')
 }
-function isMaterialSection(section: { heading: string; body: string }) {
+function isMaterialSection(section: { heading: string; body: string; imageLabels: string[] }) {
   const heading = normalizedSentence(section.heading)
   const words = section.body.trim().split(/\s+/).filter(Boolean)
   return (
@@ -440,15 +430,14 @@ function buildScenes(repo: Repository): Scene[] {
   const repositoryText = materialSections.map((section) => section.body).join(' ')
 
   const result: Scene[] = []
-  const assetUsage = new Map<string, number>()
   const usedEvidence: string[] = []
   materialSections.forEach((material, index) => {
     const title = cleanSlideTitle(material.heading)
-    const asset = chooseRelevantAsset(repo.assets, title, material.body, assetUsage)
-    if (asset) assetUsage.set(asset, (assetUsage.get(asset) ?? 0) + 1)
+    const evidence = selectDistinctEvidence(material.body, repositoryText, title, 'No repository visual selected', usedEvidence)
+    const assetSelection = chooseRelevantAsset(repo.assets, material.imageLabels)
+    const asset = assetSelection?.asset ?? null
     const assetLabel = asset ? repositoryAssetLabel(asset) : 'No repository visual selected'
-    const evidence = selectDistinctEvidence(material.body, repositoryText, title, assetLabel, usedEvidence)
-    const narration = buildTemplateNarration(evidence, assetLabel)
+    const narration = buildTemplateNarration(evidence)
     result.push({
       id: index + 1,
       section: Math.floor(index / SLIDES_PER_SECTION) + 1,
@@ -461,6 +450,7 @@ function buildScenes(repo: Repository): Scene[] {
       asset,
       assets: asset ? [asset] : [],
       assetLabel,
+      assetMatch: assetSelection?.match ?? null,
     })
   })
   if (result.length !== 50 || !hasUniqueSlideContent(result)) throw new Error('The storyboard contains repeated or substantially similar slide content')
@@ -538,7 +528,7 @@ function App() {
   const inTargetRange = totalDuration >= 480 && totalDuration <= 720
   const narrationReady = scenes.length > 0 && scenes.every((scene) => scene.title.trim().length > 0 && scene.narration.trim().length > 0)
   const uniqueSlidesReady = scenes.length === 50 && hasUniqueSlideContent(scenes)
-  const visualsReady = Boolean(repository?.assets.length)
+  const visualsReady = scenes.some((scene) => scene.assetMatch === 'authored' && scene.asset)
   const visualNarrationReady = visualsReady && hasVisualNarrationAlignment(scenes)
   const captionsReady = narrationReady && scenes.every((scene) => Number.isFinite(scene.duration) && scene.duration > 0)
   const isExportReady = Boolean(repository) && inTargetRange && narrationReady && uniqueSlidesReady && visualsReady && visualNarrationReady && captionsReady
@@ -615,7 +605,7 @@ function App() {
         )
         .sort((left, right) => repositoryImageScore(right.path) - repositoryImageScore(left.path))
         .map((entry) => `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(data.default_branch)}/${entry.path.split('/').map(encodeURIComponent).join('/')}`)
-      const assets = Array.from(new Set([...readmeImages, ...repositoryImages])).slice(0, 12)
+      const assets = Array.from(new Set([...readmeImages, ...repositoryImages])).slice(0, 100)
       const newRepo: Repository = {
         fullName: data.full_name,
         description: data.description ?? 'No repository description was provided.',
@@ -633,7 +623,8 @@ function App() {
       setRepository(newRepo)
       const generatedScenes = buildScenes(newRepo)
       setScenes(generatedScenes)
-      const imageNote = assets.length ? `Using ${assets.length} English or default-language repository image${assets.length === 1 ? '' : 's'}, one per slide.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
+      const matchedImageCount = generatedScenes.filter((scene) => scene.asset).length
+      const imageNote = assets.length ? `${matchedImageCount} slide${matchedImageCount === 1 ? '' : 's'} received a verified topic-matched image; unmatched slides use the material-focused placeholder.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
       const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}`)
     } catch (error) {
@@ -705,8 +696,9 @@ function App() {
     setRenderProgress(0)
     setStatus('Loading repository visuals for your video...')
     const cloudyImage = await loadImage(cloudyLogo).catch(() => null)
-    const assetImages = repository?.assets.length ? await Promise.all(repository.assets.map((asset) => loadImage(asset).catch(() => null))) : []
-    const assetImageByUrl = new Map(repository?.assets.map((asset, index) => [asset, assetImages[index]]) ?? [])
+    const usedAssets = Array.from(new Set(scenes.flatMap((scene) => scene.assets)))
+    const assetImages = await Promise.all(usedAssets.map((asset) => loadImage(asset).catch(() => null)))
+    const assetImageByUrl = new Map(usedAssets.map((asset, index) => [asset, assetImages[index]]))
     let narrationBuffers: AudioBuffer[]
     try {
       const narrationBlobs = await generateNarrationAudio(
@@ -1129,7 +1121,7 @@ function App() {
               </div>
               {repository.assets.length > 0 && (
                 <div className="asset-strip">
-                  {repository.assets.map((asset) => (
+                  {repository.assets.slice(0, 12).map((asset) => (
                     <img key={asset} src={asset} alt="Repository source asset" />
                   ))}
                 </div>
@@ -1238,7 +1230,7 @@ function App() {
                           ))}
                         </div>
                       ) : (
-                        <span>No repository image available</span>
+                        <span>No section-specific visual was documented</span>
                       )}
                     </figure>
                     <div className="slide-right">
