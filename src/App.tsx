@@ -258,6 +258,8 @@ function isRepositoryNoise(value: string) {
   return (
     /<|>|(?:src|href|alt|align)\s*=|https?:\/\/|www\.|START\s+BADGE|END\s+BADGE/i.test(text) ||
     /^(?:last\s+updated|updated|refresh\s+date|total\s+views?|views?|build|coverage|license)\s*:/i.test(text) ||
+    /\b(?:list of references|click to expand)\b/i.test(text) ||
+    /\b(?:provided as[- ]is|with all faults|demonstration purposes only|assumes no liability|official guidance|microsoft sales and support|price adjustments)\b/i.test(text) ||
     /^(?:-{3,}|={3,}|_{3,})$/.test(text)
   )
 }
@@ -269,6 +271,7 @@ function parseReadmeSections(readme: string): Array<{ heading: string; body: str
   const text = readme
     .replace(/^.*agenda\.ya?ml.*$/gim, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, ' ')
     .replace(/^.*START\s+BADGE.*$[\s\S]*?^.*END\s+BADGE.*$/gim, ' ')
     .replace(/<!--\s*START\s+BADGE\s*-->[\s\S]*?<!--\s*END\s+BADGE\s*-->/gi, ' ')
     .replace(/<div\b[^>]*>[\s\S]*?(?:badge|shields\.io)[\s\S]*?<\/div>/gi, ' ')
@@ -417,7 +420,7 @@ function isMaterialSection(section: { heading: string; body: string; imageLabels
     heading.length > 3 &&
     words.length >= 8 &&
     !/^(?:contents?|table of contents|modules?|quick review links?|references?|resources?|navigation|repository|documentation)$/.test(heading) &&
-    !/(?:repository structure|folder structure|contribut|license|github workflow|documentation map)/.test(heading)
+    !/(?:repository structure|folder structure|contribut|license|github workflow|documentation map|demonstration purposes only|disclaimer|legal notice)/.test(heading)
   )
 }
 function buildScenes(repo: Repository): Scene[] {
@@ -530,13 +533,14 @@ function App() {
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
   const selectedSceneIndex = scenes.findIndex((scene) => scene.id === selectedScene.id)
-  const inTargetRange = totalDuration >= 480 && totalDuration <= 720
-  const narrationReady = scenes.length > 0 && scenes.every((scene) => scene.title.trim().length > 0 && scene.narration.trim().length > 0)
-  const uniqueSlidesReady = scenes.length === 50 && hasUniqueSlideContent(scenes)
-  const visualsReady = scenes.some((scene) => scene.assetMatch === 'authored' && scene.asset)
+  const hasRepository = Boolean(repository)
+  const inTargetRange = hasRepository && totalDuration >= 480 && totalDuration <= 720
+  const narrationReady = hasRepository && scenes.length > 0 && scenes.every((scene) => scene.title.trim().length > 0 && scene.narration.trim().length > 0)
+  const uniqueSlidesReady = hasRepository && scenes.length === 50 && hasUniqueSlideContent(scenes)
+  const visualsReady = hasRepository && scenes.some((scene) => scene.assetMatch === 'authored' && scene.asset)
   const visualNarrationReady = visualsReady && hasVisualNarrationAlignment(scenes)
-  const captionsReady = narrationReady && scenes.every((scene) => Number.isFinite(scene.duration) && scene.duration > 0)
-  const isExportReady = Boolean(repository) && inTargetRange && narrationReady && uniqueSlidesReady && visualsReady && visualNarrationReady && captionsReady
+  const captionsReady = hasRepository && narrationReady && scenes.every((scene) => Number.isFinite(scene.duration) && scene.duration > 0)
+  const isExportReady = hasRepository && inTargetRange && narrationReady && uniqueSlidesReady && visualsReady && visualNarrationReady && captionsReady
   const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
   const apiHeaders: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -637,17 +641,17 @@ function App() {
         documentation,
         assets,
       }
+      const generatedScenes = buildScenes(newRepo)
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
-      const generatedScenes = buildScenes(newRepo)
       setScenes(generatedScenes)
+      setSelectedSceneId(generatedScenes[0].id)
       const matchedImageCount = generatedScenes.filter((scene) => scene.asset).length
       const imageNote = assets.length ? `${matchedImageCount} slide${matchedImageCount === 1 ? '' : 's'} received a verified topic-matched image; unmatched slides use the material-focused placeholder.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
       const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}`)
     } catch (error) {
       if (loadId !== repositoryLoadIdRef.current) return
-      setRepository(null)
       if (loadController.signal.reason === 'timeout') {
         setStatus('GitHub took too long to respond. Check your connection and try again.')
       } else if (!(error instanceof DOMException && error.name === 'AbortError')) {
