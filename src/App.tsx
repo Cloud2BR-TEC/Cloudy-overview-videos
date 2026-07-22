@@ -13,6 +13,7 @@ type Repository = {
   openIssues: number
   readme: string
   assets: string[]
+  files: string[]
 }
 type Scene = {
   id: number
@@ -99,7 +100,7 @@ function cleanSlideTitle(value: string) {
   return value.replace(/^\s*#+\s*/, '')
 }
 function contentWords(value: string) {
-  const ignored = new Set(['about', 'after', 'before', 'from', 'into', 'repository', 'slide', 'source', 'that', 'their', 'this', 'through', 'using', 'visual', 'with', 'your'])
+  const ignored = new Set(['about', 'after', 'before', 'documented', 'from', 'image', 'includes', 'information', 'into', 'project', 'provides', 'reference', 'repository', 'resource', 'slide', 'source', 'that', 'their', 'this', 'through', 'topic', 'using', 'visual', 'with', 'your'])
   const domainTerms = new Set(['ai', 'api', 'cd', 'ci', 'ml', 'ui', 'ux'])
   return new Set(value.toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => (word.length > 3 || domainTerms.has(word)) && !ignored.has(word)) ?? [])
 }
@@ -207,6 +208,21 @@ function repositoryImageScore(path: string) {
   if (/(^|\/)(screenshots?|images?|media|docs?|figures?|resources?)(\/|$)/.test(normalized)) score += 4
   if (/cover|hero|banner|screenshot|preview|demo|architecture|diagram|workflow/.test(normalized)) score += 3
   return score
+}
+function repositoryFileScore(path: string) {
+  const normalized = path.toLowerCase()
+  let score = 0
+  if (/(^|\/)(docs?|examples?|notebooks?|lessons?|labs?|src|tutorials?)(\/|$)/.test(normalized)) score += 6
+  if (/readme|guide|overview|architecture|workflow|setup|getting-started|\.md$|\.ipynb$/.test(normalized)) score += 4
+  if (/(^|\/)(\.github|scripts?|tests?)(\/|$)|(^|\/)\./.test(normalized)) score -= 3
+  return score
+}
+function repositoryFileFact(path: string) {
+  const pathWithoutExtension = decodeURIComponent(path).replace(/\.[^/.]+$/, '')
+  const segments = pathWithoutExtension.split('/').filter(Boolean)
+  const resourceName = (segments.pop() ?? pathWithoutExtension).replace(/[._-]+/g, ' ')
+  const location = segments.join(' / ').replace(/[._-]+/g, ' ')
+  return location ? `The ${resourceName} resource appears under ${location}.` : `The repository includes the ${resourceName} resource.`
 }
 function repositoryAssetLabel(url: string) {
   try {
@@ -359,40 +375,41 @@ function rankedEvidenceSentences(primaryText: string, repositoryText: string, sl
     return relevance(right) - relevance(left)
   })
 }
-function buildEvidenceBullets(primaryText: string, repositoryText: string, slideTitle: string, assetLabel: string) {
-  const sentences = rankedEvidenceSentences(primaryText, repositoryText, slideTitle, assetLabel)
-  if (!sentences.length) return [`${slideTitle}: No supporting README detail was found.`]
-
-  return sentences.slice(0, 4).map((sentence, index) => {
-    const words = sentence.replace(/[.!?]+$/, '').split(/\s+/)
-    const summary = words.length > 14 ? `${words.slice(0, 14).join(' ')}\u2026` : words.join(' ')
-    return index === 0 ? `${slideTitle}: ${summary}` : summary
-  })
+function contentSimilarity(left: string, right: string) {
+  const leftWords = contentWords(left)
+  const rightWords = contentWords(right)
+  if (!leftWords.size || !rightWords.size) return 0
+  const sharedWords = Array.from(leftWords).filter((word) => rightWords.has(word)).length
+  return sharedWords / Math.min(leftWords.size, rightWords.size)
 }
-function buildTemplateNarration(primaryText: string, repositoryText: string, slideTitle: string, assetLabel: string) {
-  const sentences = rankedEvidenceSentences(primaryText, repositoryText, slideTitle, assetLabel)
+function selectDistinctEvidence(primaryText: string, repositoryText: string, slideTitle: string, assetLabel: string, usedEvidence: string[]) {
+  const evidence = rankedEvidenceSentences(primaryText, repositoryText, slideTitle, assetLabel).find(
+    (candidate) => usedEvidence.every((used) => contentSimilarity(candidate, used) < 0.72),
+  )
+  if (!evidence) throw new Error('This repository does not contain enough distinct README evidence to create 50 non-repeating slides')
+  usedEvidence.push(evidence)
+  return evidence
+}
+function buildEvidenceBullets(evidence: string, slideTitle: string) {
+  const words = evidence.replace(/[.!?]+$/, '').split(/\s+/)
+  const summary = words.length > 20 ? `${words.slice(0, 13).join(' ')}\u2026 ${words.slice(-6).join(' ')}` : words.join(' ')
+  return [`${slideTitle}: ${summary}`]
+}
+function buildTemplateNarration(evidence: string, assetLabel: string) {
   const visualSubject = assetLabel === 'No repository visual selected' ? '' : repositoryAssetSubject(assetLabel)
   const visualBridge = visualSubject ? `The ${visualSubject} image provides a visual reference for this repository topic.` : ''
-  const contextLead = `${slideTitle} is grounded in the repository's documented information.`
-  if (!sentences.length) return [contextLead, visualBridge].filter(Boolean).join(' ')
-
-  const narration = [contextLead]
-  let wordCount = narration.join(' ').split(/\s+/).length
-  for (const sentence of sentences) {
-    if (wordCount >= TARGET_NARRATION_WORDS) break
-    const remaining = TARGET_NARRATION_WORDS + 4 - wordCount
-    const words = sentence.split(/\s+/).slice(0, remaining)
-    narration.push(words.join(' '))
-    wordCount += words.length
-  }
-  if (visualBridge) narration.push(visualBridge)
-  return narration.join(' ').trim()
+  const evidenceSummary = limitWords(evidence, TARGET_NARRATION_WORDS + 4)
+  return [evidenceSummary, visualBridge].filter(Boolean).join(' ').trim()
 }
 function hasUniqueSlideContent(scenes: Scene[]) {
   const titleKeys = scenes.map((scene) => normalizedSentence(scene.title)).filter(Boolean)
   const narrationKeys = scenes.map((scene) => normalizedSentence(scene.narration)).filter(Boolean)
   const bulletKeys = scenes.map((scene) => normalizedSentence(scene.bullets.join(' '))).filter(Boolean)
-  return new Set(titleKeys).size === scenes.length && new Set(narrationKeys).size === scenes.length && new Set(bulletKeys).size === scenes.length
+  if (new Set(titleKeys).size !== scenes.length || new Set(narrationKeys).size !== scenes.length || new Set(bulletKeys).size !== scenes.length) return false
+  const evidenceText = (scene: Scene) => [scene.bullets[0]?.replace(/^[^:]+:\s*/, '') ?? '', ...scene.bullets.slice(1)].join(' ')
+  return scenes.every((scene, index) =>
+    scenes.slice(index + 1).every((other) => contentSimilarity(evidenceText(scene), evidenceText(other)) < 0.72),
+  )
 }
 function hasVisualNarrationAlignment(scenes: Scene[]) {
   return scenes.every((scene) => {
@@ -406,7 +423,13 @@ function buildScenes(repo: Repository): Scene[] {
   const find = (pattern: RegExp) => sections.find((s) => pattern.test(s.heading) && s.body.trim().split(/\s+/).length > 8)?.body ?? ''
   const fallback = (idx: number) => sections[idx]?.body ?? ''
   const MAX = 800
-  const repositoryText = sections.map((section) => section.body).join(' ') || repo.description
+  const repositoryText = [
+    sections.map((section) => section.body).join(' ') || repo.description,
+    repo.language ? `The primary repository language is ${repo.language}.` : '',
+    repo.topics.length ? `The repository topics are ${repo.topics.join(', ')}.` : '',
+    `The repository license is ${repo.license}.`,
+    ...repo.files.map(repositoryFileFact),
+  ].filter(Boolean).join(' ')
 
   const groups = [
     {
@@ -438,6 +461,7 @@ function buildScenes(repo: Repository): Scene[] {
 
   const result: Scene[] = []
   const assetUsage = new Map<string, number>()
+  const usedEvidence: string[] = []
   let id = 1
   groups.forEach((group, groupIndex) => {
     group.slideTitles.forEach((slideTitle, slideIndex) => {
@@ -445,7 +469,8 @@ function buildScenes(repo: Repository): Scene[] {
       const asset = chooseRelevantAsset(repo.assets, title, group.text, assetUsage)
       if (asset) assetUsage.set(asset, (assetUsage.get(asset) ?? 0) + 1)
       const assetLabel = asset ? repositoryAssetLabel(asset) : 'No repository visual selected'
-      const narration = buildTemplateNarration(group.text, repositoryText, title, assetLabel)
+      const evidence = selectDistinctEvidence(group.text, repositoryText, title, assetLabel, usedEvidence)
+      const narration = buildTemplateNarration(evidence, assetLabel)
       result.push({
         id: id++,
         section: groupIndex + 1,
@@ -454,14 +479,14 @@ function buildScenes(repo: Repository): Scene[] {
         duration: TEMPLATE_SLIDE_SECONDS,
         narration,
         visual: asset ? `Repository image: ${assetLabel}` : group.visual,
-        bullets: buildEvidenceBullets(group.text, repositoryText, title, assetLabel),
+        bullets: buildEvidenceBullets(evidence, title),
         asset,
         assets: asset ? [asset] : [],
         assetLabel,
       })
     })
   })
-  if (result.length !== 50 || !hasUniqueSlideContent(result)) throw new Error('The storyboard template produced duplicate slide content.')
+  if (result.length !== 50 || !hasUniqueSlideContent(result)) throw new Error('The storyboard contains repeated or substantially similar slide content')
   return result
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
@@ -583,6 +608,16 @@ function App() {
             tree?: Array<{ path: string; type: string; size?: number }>
           })
         : null
+      const repositoryFiles = (treeData?.tree ?? [])
+        .filter(
+          (entry) =>
+            entry.type === 'blob' &&
+            !isExcludedRepositoryPath(entry.path) &&
+            !/(^|\/)(node_modules|vendor|dist|build|coverage|\.next|__pycache__)(\/|$)/i.test(entry.path),
+        )
+        .sort((left, right) => repositoryFileScore(right.path) - repositoryFileScore(left.path) || left.path.localeCompare(right.path))
+        .map((entry) => entry.path)
+        .slice(0, 250)
       const repositoryImages = (treeData?.tree ?? [])
         .filter(
           (entry) =>
@@ -607,6 +642,7 @@ function App() {
         openIssues: data.open_issues_count,
         readme: readmeText,
         assets,
+        files: repositoryFiles,
       }
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
@@ -614,9 +650,9 @@ function App() {
       setScenes(generatedScenes)
       const imageNote = assets.length ? `Using ${assets.length} English or default-language repository image${assets.length === 1 ? '' : 's'}, one per slide.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${imageNote}`)
-    } catch {
+    } catch (error) {
       setRepository(null)
-      setStatus('The repository could not be read. Check repository access and try again.')
+      setStatus(error instanceof Error ? error.message : 'The repository could not be read. Check repository access and try again.')
     } finally {
       setIsLoading(false)
     }
@@ -1297,7 +1333,7 @@ function App() {
             <li className={repository ? 'done' : ''}>Repository source captured</li>
             <li className={inTargetRange ? 'done' : ''}>8-12 minute runtime</li>
             <li className={narrationReady ? 'done' : ''}>Every slide has a title and narration</li>
-            <li className={uniqueSlidesReady ? 'done' : ''}>All 50 slides have unique content</li>
+            <li className={uniqueSlidesReady ? 'done' : ''}>All 50 slides have distinct titles, narration, and evidence</li>
             <li className={visualsReady ? 'done' : ''}>Source visuals selected</li>
             <li className={visualNarrationReady ? 'done' : ''}>Narration relates to every visual</li>
             <li className={captionsReady ? 'done' : ''}>Caption timings ready</li>
