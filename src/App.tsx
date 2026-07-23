@@ -38,6 +38,7 @@ const SLIDES_PER_SECTION = 10
 const TEMPLATE_SLIDE_SECONDS = 12
 const VOICE_RATE = 1.15
 const BASE_NARRATION_WORDS_PER_MINUTE = 130
+const CLOUDY_NARRATOR = 'Lessac'
 const PLAYBACK_SPEED_OPTIONS = [1, 1.25, 1.5, 1.75, 2, 2.5] as const
 const SLIDE_FOCUS: Record<string, string> = {
   Overview: 'Begin with the central idea and the context needed to understand the repository.',
@@ -689,6 +690,7 @@ function App() {
   const videoPreviewAbortRef = useRef(false)
   const videoPreviewSceneIdxRef = useRef(0)
   const videoPreviewRunIdRef = useRef(0)
+  const browserVoiceRef = useRef<SpeechSynthesisVoice | null | undefined>(undefined)
   const repositoryLoadAbortRef = useRef<AbortController | null>(null)
   const repositoryLoadIdRef = useRef(0)
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
@@ -1268,25 +1270,32 @@ function App() {
 
   function pickFemaleVoice() {
     const voices = window.speechSynthesis.getVoices()
-    const assistantVoices = /siri|samantha|ava|aria|jenny|sonia|natasha|libby|serena|alloy|nova/i
+    const assistantVoices = /lessac|siri|samantha|ava|aria|jenny|sonia|natasha|libby|serena|alloy|nova/i
     const femaleNames = /zira|victoria|hazel|susan|karen|moira|tessa|fiona|allison|erin|eva|vicki|joanna|ivy|kendra|kimberly|salli|nicole|naja|marlene|mathilde/i
     const assistantVoice = voices.find((voice) => assistantVoices.test(voice.name) && voice.lang.startsWith('en'))
-    const female = assistantVoice ?? voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en')) ?? voices.find((voice) => /female/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith('en-') && !/david|mark|james|alex|daniel|rishi|george|ryan/i.test(voice.name))
+    const female = assistantVoice ?? voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en')) ?? voices.find((voice) => /female/i.test(voice.name))
     return female ?? null
   }
 
   async function resolveVoice() {
+    if (browserVoiceRef.current !== undefined) return browserVoiceRef.current
     const immediate = pickFemaleVoice()
-    if (immediate) return immediate
+    if (immediate) {
+      browserVoiceRef.current = immediate
+      return immediate
+    }
     return new Promise<SpeechSynthesisVoice | null>((resolve) => {
-      const onVoicesChanged = () => {
+      const finish = () => {
         window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged)
-        resolve(pickFemaleVoice())
+        browserVoiceRef.current = pickFemaleVoice()
+        resolve(browserVoiceRef.current)
+      }
+      const onVoicesChanged = () => {
+        finish()
       }
       window.speechSynthesis.addEventListener('voiceschanged', onVoicesChanged)
       window.setTimeout(() => {
-        window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged)
-        resolve(pickFemaleVoice())
+        finish()
       }, 2_000)
     })
   }
@@ -1300,6 +1309,10 @@ function App() {
   async function previewVoice() {
     window.speechSynthesis.cancel()
     const femaleVoice = await resolveVoice()
+    if (!femaleVoice) {
+      setStatus(`No compatible female browser voice is available. Video exports use Cloudy’s ${CLOUDY_NARRATOR} voice.`)
+      return
+    }
     const utterance = new SpeechSynthesisUtterance(selectedScene.narration)
     utterance.voice = femaleVoice
     utterance.lang = femaleVoice?.lang ?? 'en-US'
@@ -1310,7 +1323,7 @@ function App() {
     window.speechSynthesis.cancel()
     window.speechSynthesis.speak(utterance)
     setIsSpeaking(true)
-    setStatus(femaleVoice ? `Cloudy is speaking with ${femaleVoice.name}.` : 'No female voice found. Using browser default.')
+    setStatus(`Cloudy is speaking with ${femaleVoice.name}.`)
   }
 
   async function startVideoPreview(startIndex = 0) {
@@ -1322,6 +1335,11 @@ function App() {
     videoPreviewSceneIdxRef.current = startIndex
     setVideoPreviewSceneIdx(startIndex)
     const voice = await resolveVoice()
+    if (!voice) {
+      setIsVideoPreviewPlaying(false)
+      setStatus(`No compatible female browser voice is available. Video exports use Cloudy’s ${CLOUDY_NARRATOR} voice.`)
+      return
+    }
     for (let i = startIndex; i < scenes.length; i++) {
       if (videoPreviewAbortRef.current || runId !== videoPreviewRunIdRef.current) break
       videoPreviewSceneIdxRef.current = i
@@ -1385,6 +1403,10 @@ function App() {
     if (isShortPreviewPlaying || !shortNarration) return
     window.speechSynthesis.cancel()
     const voice = await resolveVoice()
+    if (!voice) {
+      setStatus(`No compatible female browser voice is available. Video exports use Cloudy’s ${CLOUDY_NARRATOR} voice.`)
+      return
+    }
     const utterance = new SpeechSynthesisUtterance(shortNarration)
     utterance.voice = voice
     utterance.lang = voice?.lang ?? 'en-US'
