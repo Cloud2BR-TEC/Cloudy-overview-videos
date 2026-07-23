@@ -614,9 +614,12 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [isVideoPreviewPlaying, setIsVideoPreviewPlaying] = useState(false)
   const [videoPreviewSceneIdx, setVideoPreviewSceneIdx] = useState(0)
+  const [pausedVideoPreviewIndex, setPausedVideoPreviewIndex] = useState<number | null>(null)
   const renderAbortRef = useRef(false)
   const renderAbortControllerRef = useRef<AbortController | null>(null)
   const videoPreviewAbortRef = useRef(false)
+  const videoPreviewSceneIdxRef = useRef(0)
+  const videoPreviewRunIdRef = useRef(0)
   const repositoryLoadAbortRef = useRef<AbortController | null>(null)
   const repositoryLoadIdRef = useRef(0)
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
@@ -1214,14 +1217,18 @@ function App() {
     setStatus(femaleVoice ? `Cloudy is speaking with ${femaleVoice.name}.` : 'No female voice found. Using browser default.')
   }
 
-  async function startVideoPreview() {
+  async function startVideoPreview(startIndex = 0) {
     if (isVideoPreviewPlaying) return
+    const runId = ++videoPreviewRunIdRef.current
     videoPreviewAbortRef.current = false
     setIsVideoPreviewPlaying(true)
-    setVideoPreviewSceneIdx(0)
+    setPausedVideoPreviewIndex(null)
+    videoPreviewSceneIdxRef.current = startIndex
+    setVideoPreviewSceneIdx(startIndex)
     const voice = await resolveVoice()
-    for (let i = 0; i < scenes.length; i++) {
-      if (videoPreviewAbortRef.current) break
+    for (let i = startIndex; i < scenes.length; i++) {
+      if (videoPreviewAbortRef.current || runId !== videoPreviewRunIdRef.current) break
+      videoPreviewSceneIdxRef.current = i
       setVideoPreviewSceneIdx(i)
       await new Promise<void>((resolve) => {
         window.speechSynthesis.cancel()
@@ -1241,22 +1248,30 @@ function App() {
         }
         window.speechSynthesis.speak(utterance)
       })
-      if (!videoPreviewAbortRef.current && i < scenes.length - 1) {
+      if (!videoPreviewAbortRef.current && runId === videoPreviewRunIdRef.current && i < scenes.length - 1) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 350))
       }
     }
+    if (runId !== videoPreviewRunIdRef.current) return
     window.speechSynthesis.cancel()
     setIsSpeaking(false)
     setIsVideoPreviewPlaying(false)
-    setVideoPreviewSceneIdx(0)
+    if (!videoPreviewAbortRef.current) {
+      videoPreviewSceneIdxRef.current = 0
+      setVideoPreviewSceneIdx(0)
+    }
   }
 
-  function stopVideoPreview() {
+  function pauseVideoPreview() {
+    const pausedIndex = videoPreviewSceneIdxRef.current
+    videoPreviewRunIdRef.current += 1
     videoPreviewAbortRef.current = true
     window.speechSynthesis.cancel()
     setIsSpeaking(false)
     setIsVideoPreviewPlaying(false)
-    setVideoPreviewSceneIdx(0)
+    setPausedVideoPreviewIndex(pausedIndex)
+    setSelectedSceneId(scenes[pausedIndex]?.id ?? scenes[0].id)
+    setStatus(`Presentation paused at slide ${pausedIndex + 1} of ${scenes.length}.`)
   }
 
   function navigateToWorkflow(step: WorkflowStep) {
@@ -1421,8 +1436,8 @@ function App() {
                     </div>
                     <div className="presentation-actions">
                       {isVideoPreviewPlaying ? (
-                        <button className="primary-button" type="button" onClick={stopVideoPreview}>
-                          Stop
+                        <button className="primary-button" type="button" onClick={pauseVideoPreview}>
+                          Pause
                         </button>
                       ) : (
                         <>
@@ -1435,8 +1450,13 @@ function App() {
                               Preview selected
                             </button>
                           )}
+                          {pausedVideoPreviewIndex !== null && (
+                            <button className="secondary-button" type="button" onClick={() => void startVideoPreview(pausedVideoPreviewIndex)} disabled={isSpeaking}>
+                              &#9654; Resume slide {pausedVideoPreviewIndex + 1}
+                            </button>
+                          )}
                           <button className="primary-button" type="button" onClick={() => void startVideoPreview()} disabled={isSpeaking}>
-                            &#9654; Play all
+                            &#9654; {pausedVideoPreviewIndex === null ? 'Play all' : 'Replay all'}
                           </button>
                         </>
                       )}
