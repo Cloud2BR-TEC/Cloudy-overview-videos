@@ -1206,8 +1206,10 @@ function App() {
 
   function pickFemaleVoice() {
     const voices = window.speechSynthesis.getVoices()
-    const femaleNames = /zira|samantha|victoria|ava|aria|hazel|susan|karen|moira|tessa|fiona|allison|erin|eva|vicki|joanna|ivy|kendra|kimberly|salli|nicole|naja|marlene|mathilde/i
-    const female = voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en')) ?? voices.find((voice) => /female/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith('en-') && !/david|mark|james|alex|daniel|rishi|george|ryan/i.test(voice.name))
+    const assistantVoices = /siri|samantha|ava|aria|jenny|sonia|natasha|libby|serena|alloy|nova/i
+    const femaleNames = /zira|victoria|hazel|susan|karen|moira|tessa|fiona|allison|erin|eva|vicki|joanna|ivy|kendra|kimberly|salli|nicole|naja|marlene|mathilde/i
+    const assistantVoice = voices.find((voice) => assistantVoices.test(voice.name) && voice.lang.startsWith('en'))
+    const female = assistantVoice ?? voices.find((voice) => femaleNames.test(voice.name) && voice.lang.startsWith('en')) ?? voices.find((voice) => /female/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith('en-') && !/david|mark|james|alex|daniel|rishi|george|ryan/i.test(voice.name))
     return female ?? null
   }
 
@@ -1240,7 +1242,7 @@ function App() {
     utterance.voice = femaleVoice
     utterance.lang = femaleVoice?.lang ?? 'en-US'
     utterance.rate = VOICE_RATE * playbackSpeed
-    utterance.pitch = 1.1
+    utterance.pitch = 1
     utterance.onend = () => setIsSpeaking(false)
     utterance.onerror = () => setIsSpeaking(false)
     window.speechSynthesis.cancel()
@@ -1268,7 +1270,7 @@ function App() {
         utterance.voice = voice
         utterance.lang = voice?.lang ?? 'en-US'
         utterance.rate = VOICE_RATE * playbackSpeed
-        utterance.pitch = 1.1
+        utterance.pitch = 1
         utterance.onstart = () => setIsSpeaking(true)
         utterance.onend = () => {
           setIsSpeaking(false)

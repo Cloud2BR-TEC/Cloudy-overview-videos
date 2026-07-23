@@ -1,6 +1,6 @@
 import { predict } from '@mintplex-labs/piper-tts-web'
 
-const VOICE_ID = 'en_US-hfc_female-medium'
+const VOICE_ID = 'en_US-lessac-medium'
 
 type NarrationRequest = {
   scenes: Array<{ narration: string }>
