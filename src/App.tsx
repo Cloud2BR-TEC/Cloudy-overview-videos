@@ -1504,7 +1504,33 @@ function App() {
     const usedAssets = Array.from(new Set(shortSourceScenes.flatMap((scene) => scene.assets)))
     const assetImages = await Promise.all(usedAssets.map((asset) => loadImage(asset).catch(() => null)))
     const assetImageByUrl = new Map(usedAssets.map((asset, i) => [asset, assetImages[i]]))
-    const templateImages = await Promise.all(shortTemplateUrls.map((url) => loadImage(url).catch(() => null)))
+    const templateImages: (HTMLCanvasElement | null)[] = await Promise.all(
+      shortTemplateUrls.map(async (url) => {
+        try {
+          const response = await fetch(url)
+          const svgText = await response.text()
+          const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' })
+          const objectUrl = URL.createObjectURL(blob)
+          const img = new Image()
+          img.width = 1080
+          img.height = 1920
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = () => reject()
+            img.src = objectUrl
+          })
+          const offscreen = document.createElement('canvas')
+          offscreen.width = 1080
+          offscreen.height = 1920
+          const offCtx = offscreen.getContext('2d')
+          offCtx?.drawImage(img, 0, 0, 1080, 1920)
+          URL.revokeObjectURL(objectUrl)
+          return offscreen
+        } catch {
+          return null
+        }
+      }),
+    )
     let narrationBuffers: AudioBuffer[]
     try {
       const narrationBlobs = await generateNarrationAudio(
