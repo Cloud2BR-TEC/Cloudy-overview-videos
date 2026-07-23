@@ -722,10 +722,12 @@ function App() {
   const shortNarration = shortSourceScenes.map((scene) => scene.narration).join(' ')
   const shortRuntime = shortSourceScenes.reduce((total, scene) => total + effectiveSceneDuration(scene, playbackSpeed), 0)
   const shortAssetEntries = [
-    { kind: 'cloudy', name: 'Cloudy host', detail: 'Narrator and guide', image: null },
-    { kind: 'concept', name: shortTopic.title, detail: 'Primary concept', image: null },
-    ...(shortTopic.assets.slice(0, 3).map((asset) => ({ kind: 'source', name: repositoryAssetLabel(asset), detail: 'Repository visual', image: asset }))),
-    ...((repository?.topics ?? []).slice(0, 2).map((topic) => ({ kind: 'topic', name: topic, detail: 'Topic object', image: null }))),
+    { kind: 'cloudy', name: 'Cloudy', detail: 'Host & narrator', image: null },
+    { kind: 'actor', name: 'Professor', detail: 'Expert who teaches', image: null },
+    { kind: 'actor', name: 'Student', detail: 'Curious learner', image: null },
+    { kind: 'concept', name: shortTopic.title, detail: 'Primary concept character', image: null },
+    ...(shortTopic.assets.slice(0, 2).map((asset) => ({ kind: 'source', name: repositoryAssetLabel(asset), detail: 'Scene prop', image: asset }))),
+    ...((repository?.topics ?? []).slice(0, 3).map((topic) => ({ kind: 'topic', name: topic, detail: 'Concept object', image: null }))),
   ]
 
   async function loadRepository(value: string) {
@@ -1451,8 +1453,9 @@ function App() {
     const canvas = document.createElement('canvas')
     canvas.width = 1080
     canvas.height = 1920
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const ctxMaybe = canvas.getContext('2d')
+    if (!ctxMaybe) return
+    const ctx: CanvasRenderingContext2D = ctxMaybe
     const audioContext = new AudioContext()
     await audioContext.resume()
     shortRenderAbortRef.current = false
@@ -1532,128 +1535,348 @@ function App() {
       const sceneDuration = effectiveSceneDuration(scene, playbackSpeed)
       const sceneElapsed = elapsed - (offset - sceneDuration)
       const sceneProgress = Math.min(1, sceneElapsed / sceneDuration)
-      const entrance = Math.min(1, sceneElapsed / 0.5)
+      const entrance = Math.min(1, sceneElapsed / 0.6)
       const eased = 1 - (1 - entrance) ** 3
-      const pulse = 0.5 + Math.sin(sceneElapsed * 1.4) * 0.5
       const W = canvas.width
       const H = canvas.height
+      const t = elapsed
 
-      // Background gradient
+      // ── Cast of characters ──
+      type Actor = { name: string; color: string; accent: string; emoji: string }
+      const cast: Actor[] = [
+        { name: 'Cloudy', color: '#1a5067', accent: '#f5a975', emoji: '☁️' },
+        { name: 'Professor', color: '#2d6b4f', accent: '#a8e6cf', emoji: '🎓' },
+        { name: 'Student', color: '#5c3d7a', accent: '#d4b3f7', emoji: '💡' },
+        { name: shortTopic.title.split(' ').slice(0, 2).join(' '), color: '#bd5c37', accent: '#ffe0c8', emoji: '⚡' },
+      ]
+      // Topic objects as animated props
+      const props = (repository?.topics ?? []).slice(0, 4).map((topic, i) => ({
+        label: topic,
+        color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'][i % 4],
+      }))
+
+      // Scene composition types per beat
+      const compositions = ['intro', 'dialogue', 'demonstration', 'group', 'conclusion'] as const
+      const composition = compositions[sceneIdx % compositions.length]
+
+      // ── Background ──
       const bg = ctx.createLinearGradient(0, 0, 0, H)
-      bg.addColorStop(0, '#0f2e3d')
-      bg.addColorStop(0.5, '#173f55')
-      bg.addColorStop(1, '#bd5c37')
+      bg.addColorStop(0, '#0a1e2e')
+      bg.addColorStop(0.4, '#112d3f')
+      bg.addColorStop(1, '#1a3a28')
       ctx.fillStyle = bg
       ctx.fillRect(0, 0, W, H)
 
-      // Background image
+      // Subtle bg image
       const sceneAssetImages = scene.assets.map((a) => assetImageByUrl.get(a)).filter((img): img is HTMLImageElement => Boolean(img))
-      const bgImg = sceneAssetImages[Math.min(sceneAssetImages.length - 1, Math.floor(sceneProgress * sceneAssetImages.length))] ?? null
+      const bgImg = sceneAssetImages[0] ?? null
       if (bgImg) {
         ctx.save()
-        ctx.globalAlpha = 0.22
-        drawCoverImage(ctx, bgImg, 0, 0, W, H, 1 + sceneProgress * 0.03)
+        ctx.globalAlpha = 0.12
+        drawCoverImage(ctx, bgImg, 0, 0, W, H, 1 + sceneProgress * 0.02)
         ctx.restore()
-        ctx.fillStyle = 'rgba(15, 46, 61, 0.82)'
+        ctx.fillStyle = 'rgba(10, 30, 46, 0.85)'
         ctx.fillRect(0, 0, W, H)
       }
 
-      // Scan lines
-      ctx.fillStyle = `rgba(255,255,255,${0.03 + pulse * 0.03})`
-      for (let row = 0; row < H; row += 80) ctx.fillRect(0, row, W, 1)
+      // Cinematic letterbox bars
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, W, 60)
+      ctx.fillRect(0, H - 60, W, 60)
 
-      // Beat number badge
-      ctx.fillStyle = '#bd5c37'
-      ctx.beginPath()
-      ctx.roundRect(60, 100, 72, 72, 10)
-      ctx.fill()
-      ctx.fillStyle = '#fff'
-      ctx.font = '800 36px Manrope, sans-serif'
-      ctx.fillText(String(sceneIdx + 1).padStart(2, '0'), 72, 148)
-
-      // Title
-      ctx.save()
-      ctx.globalAlpha = eased
-      ctx.translate((1 - eased) * -40, 0)
-      const titleLayout = fitCanvasText(ctx, scene.title, W - 140, 160, 62, 28, '800')
-      ctx.fillStyle = '#fff'
-      ctx.font = `800 ${titleLayout.fontSize}px Manrope, sans-serif`
-      titleLayout.lines.forEach((line, i) => ctx.fillText(line, 60, 240 + i * titleLayout.lineHeight))
-      ctx.restore()
-
-      // Visual panel (middle)
-      const panelY = 440
-      const panelH = 540
-      if (bgImg) {
+      // ── Draw character helper ──
+      function drawCharacter(actor: Actor, x: number, y: number, size: number, speaking: boolean, facingRight = true) {
+        const bobY = Math.sin(t * 2 + x * 0.01) * 6
+        const breathe = 1 + Math.sin(t * 3 + y * 0.01) * 0.03
         ctx.save()
+        ctx.translate(x, y + bobY)
+        ctx.scale(facingRight ? 1 : -1, 1)
+        ctx.scale(breathe, breathe)
+        // Body
+        ctx.fillStyle = actor.color
         ctx.beginPath()
-        ctx.roundRect(50, panelY, W - 100, panelH, 12)
-        ctx.clip()
-        ctx.fillStyle = '#1a5067'
-        ctx.fillRect(50, panelY, W - 100, panelH)
-        ctx.globalAlpha = 0.88
-        drawContainImage(ctx, bgImg, 70, panelY + 20, W - 140, panelH - 40)
-        ctx.restore()
-      } else {
-        ctx.fillStyle = '#1a5067'
-        ctx.beginPath()
-        ctx.roundRect(50, panelY, W - 100, panelH, 12)
+        ctx.ellipse(0, 0, size * 0.5, size * 0.6, 0, 0, Math.PI * 2)
         ctx.fill()
-        // Show supporting points
-        const points = scene.supportingPoints.slice(0, 4)
-        ctx.fillStyle = '#d9eef6'
-        let py = panelY + 60
-        points.forEach((pt) => {
-          const ptLayout = fitCanvasText(ctx, pt, W - 220, 100, 28, 18)
-          ctx.font = `400 ${ptLayout.fontSize}px Manrope, sans-serif`
-          ctx.fillStyle = '#bd5c37'
+        // Head
+        ctx.fillStyle = actor.accent
+        ctx.beginPath()
+        ctx.arc(0, -size * 0.7, size * 0.35, 0, Math.PI * 2)
+        ctx.fill()
+        // Eyes
+        ctx.fillStyle = '#1a1a2e'
+        const eyeOff = size * 0.12
+        const blinkY = Math.abs(Math.sin(t * 4 + x)) < 0.05 ? 0 : size * 0.08
+        ctx.beginPath()
+        ctx.ellipse(-eyeOff, -size * 0.72, size * 0.06, blinkY || size * 0.01, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(eyeOff, -size * 0.72, size * 0.06, blinkY || size * 0.01, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Mouth (open when speaking)
+        if (speaking) {
+          const mouthOpen = Math.abs(Math.sin(t * 8)) * size * 0.08 + size * 0.03
+          ctx.fillStyle = '#2d1b1b'
           ctx.beginPath()
-          ctx.arc(80, py - 8, 6, 0, Math.PI * 2)
+          ctx.ellipse(0, -size * 0.55, size * 0.1, mouthOpen, 0, 0, Math.PI * 2)
           ctx.fill()
-          ctx.fillStyle = '#d9eef6'
-          ptLayout.lines.forEach((line, i) => ctx.fillText(line, 102, py + i * ptLayout.lineHeight))
-          py += ptLayout.lines.length * ptLayout.lineHeight + 24
-        })
-      }
-
-      // Cloudy avatar
-      const bob = Math.sin(elapsed * 1.6) * 8
-      const tilt = Math.sin(elapsed * 1.6) * 0.12
-      const avatarY = 1060 + bob
-      if (cloudyImage) {
-        ctx.save()
-        ctx.translate(W - 120, avatarY)
-        ctx.rotate(tilt)
-        ctx.drawImage(cloudyImage, -52, -52, 104, 104)
+        } else {
+          ctx.strokeStyle = '#2d1b1b'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(0, -size * 0.58, size * 0.08, 0.1 * Math.PI, 0.9 * Math.PI)
+          ctx.stroke()
+        }
+        // Name label
+        ctx.scale(facingRight ? 1 : -1, 1)
+        ctx.fillStyle = '#fff'
+        ctx.font = `700 ${Math.round(size * 0.22)}px Manrope, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.fillText(actor.name, 0, size * 0.55)
+        ctx.textAlign = 'left'
         ctx.restore()
       }
 
-      // Narration captions panel
-      ctx.fillStyle = 'rgba(10, 30, 42, 0.88)'
-      ctx.beginPath()
-      ctx.roundRect(40, 1140, W - 80, 520, 14)
-      ctx.fill()
+      // ── Draw prop/object helper ──
+      function drawProp(label: string, color: string, x: number, y: number, size: number) {
+        const float = Math.sin(t * 1.8 + x * 0.02 + y * 0.01) * 8
+        const spin = Math.sin(t * 0.7 + x) * 0.15
+        ctx.save()
+        ctx.translate(x, y + float)
+        ctx.rotate(spin)
+        // Hexagonal shape
+        ctx.fillStyle = color
+        ctx.beginPath()
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI / 3) * i - Math.PI / 6
+          const px = Math.cos(angle) * size
+          const py = Math.sin(angle) * size
+          if (i === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        ctx.fill()
+        // Label
+        ctx.fillStyle = '#fff'
+        ctx.font = `700 ${Math.max(11, Math.round(size * 0.4))}px Manrope, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.fillText(label.slice(0, 6).toUpperCase(), 0, size * 0.15)
+        ctx.textAlign = 'left'
+        ctx.restore()
+      }
+
+      // ── Draw speech bubble ──
+      function drawBubble(text: string, x: number, y: number, maxW: number, tailX: number, tailY: number) {
+        const bubbleLayout = fitCanvasText(ctx, text, maxW - 40, 200, 24, 14)
+        const bh = bubbleLayout.lines.length * bubbleLayout.lineHeight + 30
+        const bw = maxW
+        ctx.save()
+        ctx.fillStyle = 'rgba(255,255,255,0.95)'
+        ctx.beginPath()
+        ctx.roundRect(x, y, bw, bh, 12)
+        ctx.fill()
+        // Tail
+        ctx.beginPath()
+        ctx.moveTo(tailX, y + bh)
+        ctx.lineTo(tailX - 10, tailY)
+        ctx.lineTo(tailX + 10, y + bh)
+        ctx.closePath()
+        ctx.fill()
+        ctx.fillStyle = '#1a2a3a'
+        ctx.font = `400 ${bubbleLayout.fontSize}px Manrope, sans-serif`
+        bubbleLayout.lines.forEach((line, i) => ctx.fillText(line, x + 20, y + 26 + i * bubbleLayout.lineHeight))
+        ctx.restore()
+      }
+
+      // ── Scene compositions ──
+      const narSentences = scene.narration.replace(/([.!?])\s+/g, '$1|').split('|').filter((s) => s.trim().length > 10)
+      const activeSentenceIdx = Math.min(narSentences.length - 1, Math.floor(sceneProgress * narSentences.length))
+      const activeSentence = narSentences[activeSentenceIdx] ?? scene.narration.slice(0, 120)
+
+      if (composition === 'intro') {
+        // Title card with Cloudy center stage
+        ctx.save()
+        ctx.globalAlpha = eased
+        ctx.fillStyle = '#f5a975'
+        ctx.font = '800 22px Manrope, sans-serif'
+        ctx.fillText(`SCENE ${sceneIdx + 1}`, 60, 130)
+        ctx.restore()
+        const titleLayout = fitCanvasText(ctx, scene.title, W - 120, 180, 58, 30, '800')
+        ctx.fillStyle = '#fff'
+        ctx.font = `800 ${titleLayout.fontSize}px Manrope, sans-serif`
+        ctx.save()
+        ctx.globalAlpha = eased
+        titleLayout.lines.forEach((line, i) => ctx.fillText(line, 60, 200 + i * titleLayout.lineHeight))
+        ctx.restore()
+        // Cloudy walks in from left
+        const cloudyX = eased * 540
+        if (cloudyImage) {
+          const bob2 = Math.sin(t * 1.6) * 10
+          ctx.save()
+          ctx.translate(cloudyX, 620 + bob2)
+          ctx.rotate(Math.sin(t * 1.6) * 0.1)
+          ctx.drawImage(cloudyImage, -80, -80, 160, 160)
+          ctx.restore()
+        } else {
+          drawCharacter(cast[0], cloudyX, 620, 90, true)
+        }
+        // Props float in from right
+        props.slice(0, 3).forEach((prop, i) => {
+          const px = W - 100 - i * 120 + (1 - eased) * 200
+          const py = 500 + i * 140
+          drawProp(prop.label, prop.color, px, py, 36)
+        })
+        // Subtitle narration
+        drawBubble(activeSentence, 60, 820, W - 120, 200, 760)
+
+      } else if (composition === 'dialogue') {
+        // Two characters talking to each other
+        const speakerIdx = activeSentenceIdx % 2 === 0 ? 0 : 1
+        const leftActor = cast[1] // Professor
+        const rightActor = cast[2] // Student
+        // Scene label
+        ctx.fillStyle = '#f5a975'
+        ctx.font = '700 18px Manrope, sans-serif'
+        ctx.fillText(`SCENE ${sceneIdx + 1} — ${scene.title.toUpperCase()}`, 60, 110)
+        // Characters
+        const leftX = 200 + Math.sin(t * 0.5) * 20
+        const rightX = W - 200 + Math.sin(t * 0.7 + 1) * 20
+        drawCharacter(leftActor, leftX, 550, 100, speakerIdx === 0, true)
+        drawCharacter(rightActor, rightX, 550, 100, speakerIdx === 1, false)
+        // Cloudy in background
+        if (cloudyImage) {
+          ctx.save()
+          ctx.globalAlpha = 0.6
+          ctx.translate(W / 2, 250)
+          ctx.drawImage(cloudyImage, -40, -40, 80, 80)
+          ctx.restore()
+        }
+        // Speech bubble above speaker
+        if (speakerIdx === 0) {
+          drawBubble(activeSentence, 60, 220, W / 2 + 60, leftX, 450)
+        } else {
+          drawBubble(activeSentence, W / 2 - 80, 220, W / 2 + 20, rightX, 450)
+        }
+        // Props floating between characters
+        props.slice(0, 2).forEach((prop, i) => {
+          drawProp(prop.label, prop.color, W / 2 + (i - 0.5) * 140, 700 + i * 60, 30)
+        })
+
+      } else if (composition === 'demonstration') {
+        // Concept character center with objects orbiting
+        ctx.fillStyle = '#f5a975'
+        ctx.font = '700 18px Manrope, sans-serif'
+        ctx.fillText(`SCENE ${sceneIdx + 1} — ${scene.title.toUpperCase()}`, 60, 110)
+        // Concept character (big, center)
+        const conceptActor = cast[3]
+        drawCharacter(conceptActor, W / 2, 480, 130, true)
+        // Orbiting props
+        props.forEach((prop, i) => {
+          const angle = (t * 0.8) + (i * Math.PI * 2 / Math.max(props.length, 1))
+          const radius = 220 + i * 30
+          const px = W / 2 + Math.cos(angle) * radius
+          const py = 480 + Math.sin(angle) * radius * 0.5
+          drawProp(prop.label, prop.color, px, py, 32 + Math.sin(t + i) * 4)
+        })
+        // Cloudy pointing from corner
+        if (cloudyImage) {
+          const pointBob = Math.sin(t * 2) * 5
+          ctx.save()
+          ctx.translate(120, 780 + pointBob)
+          ctx.rotate(-0.15)
+          ctx.drawImage(cloudyImage, -50, -50, 100, 100)
+          ctx.restore()
+        }
+        // Narration bubble
+        drawBubble(activeSentence, 60, 880, W - 120, 120, 840)
+
+      } else if (composition === 'group') {
+        // All characters on stage together
+        ctx.fillStyle = '#f5a975'
+        ctx.font = '700 18px Manrope, sans-serif'
+        ctx.fillText(`SCENE ${sceneIdx + 1} — ${scene.title.toUpperCase()}`, 60, 110)
+        // Arrange all cast members across the stage
+        cast.forEach((actor, i) => {
+          const spacing = W / (cast.length + 1)
+          const ax = spacing * (i + 1) + Math.sin(t * 1.2 + i * 2) * 15
+          const ay = 500 + Math.sin(t * 0.8 + i * 1.5) * 20
+          const isSpeaking = i === (activeSentenceIdx % cast.length)
+          if (i === 0 && cloudyImage) {
+            const bob2 = Math.sin(t * 1.6 + i) * 8
+            ctx.save()
+            ctx.translate(ax, ay - 30 + bob2)
+            ctx.drawImage(cloudyImage, -50, -50, 100, 100)
+            ctx.fillStyle = '#fff'
+            ctx.font = '700 16px Manrope, sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText(actor.name, 0, 65)
+            ctx.textAlign = 'left'
+            ctx.restore()
+          } else {
+            drawCharacter(actor, ax, ay, 80, isSpeaking, i % 2 === 0)
+          }
+        })
+        // Props scattered below
+        props.slice(0, 3).forEach((prop, i) => {
+          drawProp(prop.label, prop.color, 150 + i * (W - 300) / 3, 720 + Math.sin(t + i) * 10, 28)
+        })
+        // Narration at bottom
+        drawBubble(activeSentence, 60, 830, W - 120, W / 2, 800)
+
+      } else {
+        // Conclusion — Cloudy center, cast waving, curtain call
+        ctx.fillStyle = '#f5a975'
+        ctx.font = '700 18px Manrope, sans-serif'
+        ctx.fillText(`SCENE ${sceneIdx + 1} — WRAP UP`, 60, 110)
+        // Cloudy big center
+        if (cloudyImage) {
+          const bob2 = Math.sin(t * 1.2) * 12
+          ctx.save()
+          ctx.translate(W / 2, 380 + bob2)
+          ctx.rotate(Math.sin(t * 1.2) * 0.08)
+          ctx.drawImage(cloudyImage, -90, -90, 180, 180)
+          ctx.restore()
+        } else {
+          drawCharacter(cast[0], W / 2, 380, 120, true)
+        }
+        // Supporting cast waving from sides
+        cast.slice(1).forEach((actor, i) => {
+          const side = i % 2 === 0 ? 140 : W - 140
+          const wave = Math.sin(t * 3 + i * 2) * 0.2
+          ctx.save()
+          ctx.translate(side, 620 + i * 80)
+          ctx.rotate(wave)
+          drawCharacter(actor, 0, 0, 60, false, i % 2 === 0)
+          ctx.restore()
+        })
+        // Final message
+        const closingText = activeSentence || 'Thanks for watching!'
+        drawBubble(closingText, 60, 820, W - 120, W / 2, 780)
+      }
+
+      // ── Subtitle bar (always visible at bottom) ──
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+      ctx.fillRect(0, H - 260, W, 200)
       ctx.fillStyle = '#f5a975'
-      ctx.font = '700 20px Manrope, sans-serif'
-      ctx.fillText('CLOUDY IS SAYING:', 72, 1188)
+      ctx.font = '700 16px Manrope, sans-serif'
+      ctx.fillText('CLOUDY NARRATES:', 50, H - 228)
       ctx.fillStyle = '#ffffff'
-      const narLayout = fitCanvasText(ctx, scene.narration, W - 160, 440, 30, 16)
-      ctx.font = `400 ${narLayout.fontSize}px Manrope, sans-serif`
-      narLayout.lines.forEach((line, i) => ctx.fillText(line, 72, 1228 + i * narLayout.lineHeight))
+      const subLayout = fitCanvasText(ctx, activeSentence, W - 100, 150, 26, 16)
+      ctx.font = `400 ${subLayout.fontSize}px Manrope, sans-serif`
+      subLayout.lines.forEach((line, i) => ctx.fillText(line, 50, H - 200 + i * subLayout.lineHeight))
 
       // Progress bar
       const progress = Math.min(1, elapsed / totalSeconds)
-      ctx.fillStyle = 'rgba(255,255,255,.15)'
-      ctx.fillRect(0, H - 10, W, 10)
+      ctx.fillStyle = 'rgba(255,255,255,.2)'
+      ctx.fillRect(0, H - 60, W, 6)
       ctx.fillStyle = '#f5a975'
-      ctx.fillRect(0, H - 10, W * progress, 10)
+      ctx.fillRect(0, H - 60, W * progress, 6)
 
       // Watermark
       ctx.save()
-      ctx.globalAlpha = 0.55
+      ctx.globalAlpha = 0.5
       ctx.fillStyle = '#d9eef6'
-      ctx.font = '700 20px Manrope, sans-serif'
-      ctx.fillText('Cloud2BR', W - 160, H - 30)
+      ctx.font = '700 18px Manrope, sans-serif'
+      ctx.fillText('Cloud2BR', W - 150, H - 36)
       ctx.restore()
     }
 
@@ -1750,25 +1973,27 @@ function App() {
               <section className="shorts-production-grid">
                 <article className="short-stage" aria-label={`Cloudy Short preview: ${shortTopic.title}`}>
                   <div className="short-stage-copy">
-                    <p className="eyebrow">Cloudy Short</p>
+                    <p className="eyebrow">Cloudy Short Film</p>
                     <h2>{shortTopic.title}</h2>
-                    <p>{shortNarration}</p>
+                    <p className="short-composition-hint">5 animated scenes: intro → dialogue → demonstration → group → conclusion</p>
+                    <p>{shortNarration.slice(0, 200)}…</p>
                   </div>
                   <div className="short-stage-host">
                     <CloudyAvatar speaking={isShortPreviewPlaying} size={156} />
+                    <span>Host</span>
                     <span>{durationLabel(shortRuntime)}</span>
                   </div>
                   <span className="shorts-watermark" aria-hidden="true">Cloud2BR</span>
                 </article>
                 <aside className="shorts-library" aria-labelledby="shorts-library-title">
                   <div>
-                    <p className="eyebrow">Production assets</p>
-                    <h2 id="shorts-library-title">Topic-aware library</h2>
+                    <p className="eyebrow">Cast & props</p>
+                    <h2 id="shorts-library-title">Movie characters</h2>
                   </div>
                   <div className="short-asset-grid">
                     {shortAssetEntries.map((asset, index) => (
                       <article className={`short-asset ${asset.kind}`} key={`${asset.kind}-${asset.name}-${index}`}>
-                        {asset.image ? <img src={asset.image} alt={`Repository asset: ${asset.name}`} /> : asset.kind === 'cloudy' ? <CloudyAvatar size={48} /> : <span className="short-asset-token">{asset.name.slice(0, 2).toUpperCase()}</span>}
+                        {asset.image ? <img src={asset.image} alt={`Scene prop: ${asset.name}`} /> : asset.kind === 'cloudy' ? <CloudyAvatar size={48} /> : asset.kind === 'actor' ? <span className="short-asset-token actor">{asset.name === 'Professor' ? '🎓' : '💡'}</span> : <span className="short-asset-token">{asset.name.slice(0, 2).toUpperCase()}</span>}
                         <strong>{asset.name}</strong>
                         <small>{asset.detail}</small>
                       </article>
