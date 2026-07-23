@@ -1465,7 +1465,8 @@ function App() {
   function seekShortToBeat(beatIndex: number) {
     if (isShortPreviewPlaying) stopShortPreview()
     setShortPreviewBeatIdx(beatIndex)
-    setTimeout(() => void previewShort(beatIndex), 100)
+    setPausedShortBeatIndex(beatIndex)
+    setStatus(`Ready at beat ${beatIndex + 1}. Click Play or Resume to start audio.`)
   }
 
   function downloadShortScript() {
