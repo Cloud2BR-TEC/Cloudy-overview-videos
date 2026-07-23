@@ -154,7 +154,7 @@ const starterScenes: Scene[] = STARTER_NARRATIONS.map((narration, index) => ({
   assets: [],
   assetLabel: 'No repository visual selected',
   assetMatch: null,
-  supportingPoints: buildSupportingPoints(narration, extractBullets(narration).join(' ')),
+  supportingPoints: buildSupportingPoints(narration),
 }))
 
 function parseRepositoryUrl(value: string) {
@@ -428,19 +428,11 @@ function selectDistinctEvidence(primaryText: string, repositoryText: string, sli
 function buildEvidenceBullets(evidence: string, slideTitle: string) {
   return [`${slideTitle}: ${evidence.replace(/[.!?]+$/, '')}`]
 }
-function buildTemplateNarration(evidence: string) {
-  return evidence
+function buildTemplateNarration(title: string, evidence: string) {
+  return `${title}. ${evidence}`
 }
-function buildSupportingPoints(sectionText: string, evidence: string) {
-  const evidenceKey = normalizedSentence(evidence)
-  return (sectionText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [])
-    .map((sentence) => sentence.trim())
-    .filter(isNarratableText)
-    .filter((sentence) => {
-      const sentenceKey = normalizedSentence(sentence)
-      return !evidenceKey.includes(sentenceKey) && !sentenceKey.includes(evidenceKey) && contentSimilarity(sentence, evidence) < 0.55
-    })
-    .map((sentence) => sentence)
+function buildSupportingPoints(evidence: string) {
+  return [evidence]
 }
 function hasUniqueSlideContent(scenes: Scene[]) {
   const titleKeys = scenes.map((scene) => normalizedSentence(scene.title)).filter(Boolean)
@@ -454,6 +446,17 @@ function hasUniqueSlideContent(scenes: Scene[]) {
 }
 function hasVisualNarrationAlignment(scenes: Scene[]) {
   return scenes.every((scene) => !scene.asset || scene.assetMatch === 'authored')
+}
+function hasNarratedPresentationContent(scenes: Scene[]) {
+  return scenes.every((scene) => {
+    const narrationTerms = contentWords(scene.narration)
+    const displayedContent = [scene.title, ...scene.bullets, ...scene.supportingPoints]
+    return displayedContent.every((content) => {
+      const contentTerms = Array.from(contentWords(content))
+      const matchedTerms = contentTerms.filter((term) => narrationTerms.has(term)).length
+      return !contentTerms.length || matchedTerms / contentTerms.length >= 0.8
+    })
+  })
 }
 function isMaterialSection(section: { heading: string; body: string; imageLabels: string[] }) {
   const heading = normalizedSentence(section.heading)
@@ -500,9 +503,8 @@ function buildScenes(repo: Repository): Scene[] {
     const assetSelection = chooseRelevantAsset(repo.assets, material.imageLabels)
     const asset = assetSelection?.asset ?? null
     const assetLabel = asset ? repositoryAssetLabel(asset) : 'No repository visual selected'
-    const narration = buildTemplateNarration(evidence)
-    const sectionBody = 'sectionBody' in material && typeof material.sectionBody === 'string' ? material.sectionBody : material.body
-    const supportingPoints = buildSupportingPoints(sectionBody, evidence)
+    const narration = buildTemplateNarration(title, evidence)
+    const supportingPoints = buildSupportingPoints(evidence)
     if (!asset && !supportingPoints.length) {
       usedEvidence.pop()
       continue
@@ -610,7 +612,8 @@ function App() {
   const visualsReady = hasRepository && scenes.every((scene) => (scene.assetMatch === 'authored' && scene.asset) || scene.supportingPoints.length > 0)
   const visualNarrationReady = visualsReady && hasVisualNarrationAlignment(scenes)
   const captionsReady = hasRepository && narrationReady && scenes.every((scene) => Number.isFinite(scene.duration) && scene.duration > 0)
-  const isExportReady = hasRepository && inTargetRange && narrationReady && uniqueSlidesReady && visualsReady && visualNarrationReady && captionsReady
+  const presentationNarrationReady = narrationReady && hasNarratedPresentationContent(scenes)
+  const isExportReady = hasRepository && inTargetRange && narrationReady && uniqueSlidesReady && visualsReady && visualNarrationReady && captionsReady && presentationNarrationReady
   const cloudyLogo = new URL('./assets/branding/cloudy-logo.png', import.meta.url).href
   const apiHeaders: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -1534,6 +1537,7 @@ function App() {
             <li className={uniqueSlidesReady ? 'done' : ''}>All 50 slides have distinct titles, narration, and evidence</li>
             <li className={visualsReady ? 'done' : ''}>Every slide has a visual or supporting content</li>
             <li className={visualNarrationReady ? 'done' : ''}>Narration relates to every visual</li>
+            <li className={presentationNarrationReady ? 'done' : ''}>Cloudy narrates all displayed slide text</li>
             <li className={captionsReady ? 'done' : ''}>Caption timings ready</li>
           </ul>
           <div className="export-actions">
