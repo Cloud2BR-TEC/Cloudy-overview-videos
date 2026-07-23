@@ -685,6 +685,10 @@ function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState<(typeof PLAYBACK_SPEED_OPTIONS)[number]>(1)
   const [shortTopicId, setShortTopicId] = useState(1)
   const [isShortPreviewPlaying, setIsShortPreviewPlaying] = useState(false)
+  const [isRenderingShort, setIsRenderingShort] = useState(false)
+  const [shortRenderProgress, setShortRenderProgress] = useState(0)
+  const shortRenderAbortRef = useRef(false)
+  const shortRenderAbortControllerRef = useRef<AbortController | null>(null)
   const renderAbortRef = useRef(false)
   const renderAbortControllerRef = useRef<AbortController | null>(null)
   const videoPreviewAbortRef = useRef(false)
@@ -1434,6 +1438,261 @@ function App() {
     setStatus('Cloudy Shorts script downloaded.')
   }
 
+  async function exportShortVideo() {
+    if (!repository || !shortNarration || shortSourceScenes.length === 0) {
+      setStatus('Select a topic with documented content before exporting the short video.')
+      return
+    }
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || !window.AudioContext || !window.Worker) {
+      setStatus('This browser cannot create a narrated video. Use a current Chromium browser.')
+      return
+    }
+    const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((type) => MediaRecorder.isTypeSupported(type)) ?? 'video/webm'
+    const canvas = document.createElement('canvas')
+    canvas.width = 1080
+    canvas.height = 1920
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const audioContext = new AudioContext()
+    await audioContext.resume()
+    shortRenderAbortRef.current = false
+    const abortController = new AbortController()
+    shortRenderAbortControllerRef.current = abortController
+    setIsRenderingShort(true)
+    setShortRenderProgress(0)
+    setStatus('Loading visuals for Cloudy Short video...')
+    const cloudyImage = await loadImage(cloudyLogo).catch(() => null)
+    const usedAssets = Array.from(new Set(shortSourceScenes.flatMap((scene) => scene.assets)))
+    const assetImages = await Promise.all(usedAssets.map((asset) => loadImage(asset).catch(() => null)))
+    const assetImageByUrl = new Map(usedAssets.map((asset, i) => [asset, assetImages[i]]))
+    let narrationBuffers: AudioBuffer[]
+    try {
+      const narrationBlobs = await generateNarrationAudio(
+        shortSourceScenes,
+        (phase, progress) => {
+          if (phase === 'model') setStatus(`Preparing Cloudy's voice model ${Math.round(progress * 100)}%...`)
+          if (phase === 'scene') {
+            setShortRenderProgress(Math.round(progress * 30))
+            setStatus(`Generating narration ${Math.min(shortSourceScenes.length, Math.floor(progress * shortSourceScenes.length) + 1)} of ${shortSourceScenes.length}...`)
+          }
+        },
+        abortController.signal,
+      )
+      narrationBuffers = await Promise.all(narrationBlobs.map(async (blob) => audioContext.decodeAudioData(await blob.arrayBuffer())))
+    } catch (error) {
+      await audioContext.close()
+      shortRenderAbortControllerRef.current = null
+      setIsRenderingShort(false)
+      setShortRenderProgress(0)
+      setStatus(error instanceof DOMException && error.name === 'AbortError' ? 'Short video cancelled.' : 'Narration could not be generated. Check connection and try again.')
+      return
+    }
+    shortRenderAbortControllerRef.current = null
+    if (shortRenderAbortRef.current) {
+      await audioContext.close()
+      setIsRenderingShort(false)
+      setShortRenderProgress(0)
+      setStatus('Short video cancelled.')
+      return
+    }
+    window.speechSynthesis.cancel()
+    const canvasStream = canvas.captureStream(30)
+    const audioDestination = audioContext.createMediaStreamDestination()
+    const stream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDestination.stream.getAudioTracks()])
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 128_000 })
+    const chunks: BlobPart[] = []
+    recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data) })
+    const videoReady = new Promise<Blob>((resolve) => recorder.addEventListener('stop', () => resolve(new Blob(chunks, { type: 'video/webm' })), { once: true }))
+    const totalSeconds = shortSourceScenes.reduce((total, scene) => total + effectiveSceneDuration(scene, playbackSpeed), 0)
+    const startedAt = performance.now()
+    setShortRenderProgress(30)
+    setStatus('Rendering your Cloudy Short film. Keep this tab active.')
+    recorder.start(1_000)
+    let narratedIdx: number | null = null
+    let activeSource: AudioBufferSourceNode | null = null
+
+    const drawShortFrame = (elapsed: number) => {
+      let offset = 0
+      let sceneIdx = shortSourceScenes.length - 1
+      const scene = shortSourceScenes.find((item, i) => {
+        offset += effectiveSceneDuration(item, playbackSpeed)
+        if (elapsed < offset) { sceneIdx = i; return true }
+        return false
+      }) ?? shortSourceScenes[shortSourceScenes.length - 1]
+      if (sceneIdx !== narratedIdx) {
+        narratedIdx = sceneIdx
+        try { activeSource?.stop() } catch { /* ended */ }
+        const source = audioContext.createBufferSource()
+        source.buffer = narrationBuffers[sceneIdx]
+        source.playbackRate.value = VOICE_RATE * playbackSpeed
+        source.connect(audioDestination)
+        activeSource = source
+        source.start()
+      }
+      const sceneDuration = effectiveSceneDuration(scene, playbackSpeed)
+      const sceneElapsed = elapsed - (offset - sceneDuration)
+      const sceneProgress = Math.min(1, sceneElapsed / sceneDuration)
+      const entrance = Math.min(1, sceneElapsed / 0.5)
+      const eased = 1 - (1 - entrance) ** 3
+      const pulse = 0.5 + Math.sin(sceneElapsed * 1.4) * 0.5
+      const W = canvas.width
+      const H = canvas.height
+
+      // Background gradient
+      const bg = ctx.createLinearGradient(0, 0, 0, H)
+      bg.addColorStop(0, '#0f2e3d')
+      bg.addColorStop(0.5, '#173f55')
+      bg.addColorStop(1, '#bd5c37')
+      ctx.fillStyle = bg
+      ctx.fillRect(0, 0, W, H)
+
+      // Background image
+      const sceneAssetImages = scene.assets.map((a) => assetImageByUrl.get(a)).filter((img): img is HTMLImageElement => Boolean(img))
+      const bgImg = sceneAssetImages[Math.min(sceneAssetImages.length - 1, Math.floor(sceneProgress * sceneAssetImages.length))] ?? null
+      if (bgImg) {
+        ctx.save()
+        ctx.globalAlpha = 0.22
+        drawCoverImage(ctx, bgImg, 0, 0, W, H, 1 + sceneProgress * 0.03)
+        ctx.restore()
+        ctx.fillStyle = 'rgba(15, 46, 61, 0.82)'
+        ctx.fillRect(0, 0, W, H)
+      }
+
+      // Scan lines
+      ctx.fillStyle = `rgba(255,255,255,${0.03 + pulse * 0.03})`
+      for (let row = 0; row < H; row += 80) ctx.fillRect(0, row, W, 1)
+
+      // Beat number badge
+      ctx.fillStyle = '#bd5c37'
+      ctx.beginPath()
+      ctx.roundRect(60, 100, 72, 72, 10)
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.font = '800 36px Manrope, sans-serif'
+      ctx.fillText(String(sceneIdx + 1).padStart(2, '0'), 72, 148)
+
+      // Title
+      ctx.save()
+      ctx.globalAlpha = eased
+      ctx.translate((1 - eased) * -40, 0)
+      const titleLayout = fitCanvasText(ctx, scene.title, W - 140, 160, 62, 28, '800')
+      ctx.fillStyle = '#fff'
+      ctx.font = `800 ${titleLayout.fontSize}px Manrope, sans-serif`
+      titleLayout.lines.forEach((line, i) => ctx.fillText(line, 60, 240 + i * titleLayout.lineHeight))
+      ctx.restore()
+
+      // Visual panel (middle)
+      const panelY = 440
+      const panelH = 540
+      if (bgImg) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.roundRect(50, panelY, W - 100, panelH, 12)
+        ctx.clip()
+        ctx.fillStyle = '#1a5067'
+        ctx.fillRect(50, panelY, W - 100, panelH)
+        ctx.globalAlpha = 0.88
+        drawContainImage(ctx, bgImg, 70, panelY + 20, W - 140, panelH - 40)
+        ctx.restore()
+      } else {
+        ctx.fillStyle = '#1a5067'
+        ctx.beginPath()
+        ctx.roundRect(50, panelY, W - 100, panelH, 12)
+        ctx.fill()
+        // Show supporting points
+        const points = scene.supportingPoints.slice(0, 4)
+        ctx.fillStyle = '#d9eef6'
+        let py = panelY + 60
+        points.forEach((pt) => {
+          const ptLayout = fitCanvasText(ctx, pt, W - 220, 100, 28, 18)
+          ctx.font = `400 ${ptLayout.fontSize}px Manrope, sans-serif`
+          ctx.fillStyle = '#bd5c37'
+          ctx.beginPath()
+          ctx.arc(80, py - 8, 6, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#d9eef6'
+          ptLayout.lines.forEach((line, i) => ctx.fillText(line, 102, py + i * ptLayout.lineHeight))
+          py += ptLayout.lines.length * ptLayout.lineHeight + 24
+        })
+      }
+
+      // Cloudy avatar
+      const bob = Math.sin(elapsed * 1.6) * 8
+      const tilt = Math.sin(elapsed * 1.6) * 0.12
+      const avatarY = 1060 + bob
+      if (cloudyImage) {
+        ctx.save()
+        ctx.translate(W - 120, avatarY)
+        ctx.rotate(tilt)
+        ctx.drawImage(cloudyImage, -52, -52, 104, 104)
+        ctx.restore()
+      }
+
+      // Narration captions panel
+      ctx.fillStyle = 'rgba(10, 30, 42, 0.88)'
+      ctx.beginPath()
+      ctx.roundRect(40, 1140, W - 80, 520, 14)
+      ctx.fill()
+      ctx.fillStyle = '#f5a975'
+      ctx.font = '700 20px Manrope, sans-serif'
+      ctx.fillText('CLOUDY IS SAYING:', 72, 1188)
+      ctx.fillStyle = '#ffffff'
+      const narLayout = fitCanvasText(ctx, scene.narration, W - 160, 440, 30, 16)
+      ctx.font = `400 ${narLayout.fontSize}px Manrope, sans-serif`
+      narLayout.lines.forEach((line, i) => ctx.fillText(line, 72, 1228 + i * narLayout.lineHeight))
+
+      // Progress bar
+      const progress = Math.min(1, elapsed / totalSeconds)
+      ctx.fillStyle = 'rgba(255,255,255,.15)'
+      ctx.fillRect(0, H - 10, W, 10)
+      ctx.fillStyle = '#f5a975'
+      ctx.fillRect(0, H - 10, W * progress, 10)
+
+      // Watermark
+      ctx.save()
+      ctx.globalAlpha = 0.55
+      ctx.fillStyle = '#d9eef6'
+      ctx.font = '700 20px Manrope, sans-serif'
+      ctx.fillText('Cloud2BR', W - 160, H - 30)
+      ctx.restore()
+    }
+
+    const renderFrame = () => {
+      const elapsed = (performance.now() - startedAt) / 1_000
+      drawShortFrame(elapsed)
+      setShortRenderProgress(30 + Math.round((elapsed / totalSeconds) * 70))
+      if (shortRenderAbortRef.current || elapsed >= totalSeconds) {
+        try { activeSource?.stop() } catch { /* ended */ }
+        recorder.stop()
+        return
+      }
+      window.requestAnimationFrame(renderFrame)
+    }
+    window.requestAnimationFrame(renderFrame)
+    const video = await videoReady
+    stream.getTracks().forEach((track) => track.stop())
+    await audioContext.close()
+    setIsRenderingShort(false)
+    setShortRenderProgress(0)
+    if (shortRenderAbortRef.current) {
+      setStatus('Short video cancelled.')
+      return
+    }
+    const url = URL.createObjectURL(video)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `cloudy-short-${normalizedSentence(shortTopic.title).replace(/\s+/g, '-') || 'topic'}-${speedLabel(playbackSpeed)}.webm`
+    link.click()
+    URL.revokeObjectURL(url)
+    setStatus(`Cloudy Short video downloaded (${durationLabel(shortRuntime)}, vertical 1080×1920).`)
+  }
+
+  function cancelShortVideo() {
+    shortRenderAbortRef.current = true
+    shortRenderAbortControllerRef.current?.abort()
+    setStatus('Stopping short video render...')
+  }
+
   if (studioMode === 'landing') {
     return <StudioLanding onSelect={setStudioMode} />
   }
@@ -1472,16 +1731,21 @@ function App() {
             <>
               <section className="shorts-controls" aria-label="Short video controls">
                 <label htmlFor="short-topic">Topic to explain</label>
-                <select id="short-topic" value={shortTopic.id} onChange={(event) => setShortTopicId(Number(event.target.value))} disabled={isShortPreviewPlaying}>
+                <select id="short-topic" value={shortTopic.id} onChange={(event) => setShortTopicId(Number(event.target.value))} disabled={isShortPreviewPlaying || isRenderingShort}>
                   {scenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.title}</option>)}
                 </select>
                 <span className="shorts-runtime">{durationLabel(shortRuntime)} short</span>
                 {isShortPreviewPlaying ? (
                   <button className="secondary-button" type="button" onClick={stopShortPreview}>Stop preview</button>
                 ) : (
-                  <button className="primary-button" type="button" onClick={() => void previewShort()}>Preview short</button>
+                  <button className="primary-button" type="button" onClick={() => void previewShort()} disabled={isRenderingShort}>Preview short</button>
                 )}
-                <button className="secondary-button" type="button" onClick={downloadShortScript}>Download short script</button>
+                {isRenderingShort ? (
+                  <button className="secondary-button" type="button" onClick={cancelShortVideo}>Cancel render ({shortRenderProgress}%)</button>
+                ) : (
+                  <button className="primary-button" type="button" onClick={() => void exportShortVideo()}>Export short video</button>
+                )}
+                <button className="secondary-button" type="button" onClick={downloadShortScript} disabled={isRenderingShort}>Download script</button>
               </section>
               <section className="shorts-production-grid">
                 <article className="short-stage" aria-label={`Cloudy Short preview: ${shortTopic.title}`}>
