@@ -776,6 +776,33 @@ function App() {
     downloadFile('cloudy-captions.srt', content, 'application/x-subrip')
     setStatus('Editable SRT captions downloaded.')
   }
+  function exportWebVtt() {
+    if (!isExportReady) {
+      setStatus('Complete every export requirement before downloading captions.')
+      return
+    }
+    let cursor = 0
+    const content = scenes
+      .map((scene) => {
+        const start = timestamp(cursor).replace(',', '.')
+        cursor += scene.duration
+        return `${start} --> ${timestamp(cursor).replace(',', '.')}\n${scene.narration}`
+      })
+      .join('\n\n')
+    downloadFile('cloudy-captions.vtt', `WEBVTT\n\n${content}\n`, 'text/vtt')
+    setStatus('WebVTT captions downloaded. Add this file as the captions track when publishing the video.')
+  }
+  function exportTranscript() {
+    if (!isExportReady) {
+      setStatus('Complete every export requirement before downloading the transcript.')
+      return
+    }
+    const content = scenes
+      .map((scene, index) => `Slide ${index + 1}: ${scene.title}\n\n${scene.narration}`)
+      .join('\n\n')
+    downloadFile('cloudy-video-transcript.txt', content, 'text/plain')
+    setStatus('Plain-text video transcript downloaded.')
+  }
   async function exportVideo() {
     if (!isExportReady) {
       setStatus('Complete every export requirement before downloading the video.')
@@ -1336,7 +1363,12 @@ function App() {
                       )}
                     </div>
                   </div>
-                  <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`}>
+                  <p className="sr-only" aria-live="polite" aria-atomic="true">
+                    {isVideoPreviewPlaying
+                      ? `Playing slide ${videoPreviewSceneIdx + 1} of ${scenes.length}: ${presentedScene.title}. ${presentedScene.narration}`
+                      : `Selected slide ${selectedSceneIndex + 1} of ${scenes.length}: ${selectedScene.title}.`}
+                  </p>
+                  <div className={`slide-stage unified-stage ${isVideoPreviewPlaying ? 'is-playing' : ''}`} aria-label={`Video preview: ${presentedScene.title}`}>
                     <div className="slide-left markdown-slide-copy">
                       <h2 className="slide-title">{presentedScene.title}</h2>
                       <ul className="slide-bullets">
@@ -1360,6 +1392,9 @@ function App() {
                           </ul>
                         </div>
                       )}
+                      <figcaption className="sr-only">
+                        {presentedScene.assets.length ? `Repository visuals for ${presentedScene.title}` : 'Supporting documented context'}
+                      </figcaption>
                     </figure>
                     <div className="slide-right">
                       <div className={`slide-cloudy ${isSpeaking ? 'speaking' : ''}`}>
@@ -1455,7 +1490,13 @@ function App() {
               </button>
             )}
             <button className="secondary-button" type="button" onClick={exportCaptions} disabled={!isExportReady}>
-              Download captions
+              Download SRT captions
+            </button>
+            <button className="secondary-button" type="button" onClick={exportWebVtt} disabled={!isExportReady}>
+              Download WebVTT captions
+            </button>
+            <button className="secondary-button" type="button" onClick={exportTranscript} disabled={!isExportReady}>
+              Download transcript
             </button>
             <button className="secondary-button" type="button" onClick={exportProject} disabled={!isExportReady}>
               Download project setup
