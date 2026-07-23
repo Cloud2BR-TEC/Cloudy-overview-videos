@@ -2191,7 +2191,7 @@ function App() {
               <p className="eyebrow">Short-form story studio</p>
               <h1>Turn a documented topic into a one-minute Cloudy story.</h1>
             </div>
-            <p className="status" aria-live="polite">{status}</p>
+            {repository && <p className="status" aria-live="polite">{isRenderingShort ? `Rendering short video ${shortRenderProgress}%…` : isShortPreviewPlaying ? `Playing beat ${shortPreviewBeatIdx + 1} of ${shortSourceScenes.length}` : `${shortSourceScenes.length} beats · ${durationLabel(shortRuntime)} at ${speedLabel(playbackSpeed)}`}</p>}
           </div>
           {!repository ? (
             <form className="shorts-source" onSubmit={(event) => { event.preventDefault(); void loadRepository(repositoryUrl) }}>
@@ -2215,12 +2215,6 @@ function App() {
                 ) : (
                   <button className="primary-button" type="button" onClick={() => void previewShort(0)} disabled={isRenderingShort}>Preview short</button>
                 )}
-                {isRenderingShort ? (
-                  <button className="secondary-button" type="button" onClick={cancelShortVideo}>Cancel render ({shortRenderProgress}%)</button>
-                ) : (
-                  <button className="primary-button" type="button" onClick={() => void exportShortVideo()}>Export short video</button>
-                )}
-                <button className="secondary-button" type="button" onClick={downloadShortScript} disabled={isRenderingShort}>Download script</button>
               </section>
               <nav className="timeline-bar" aria-label="Short video timeline">
                 {shortSourceScenes.map((beatScene, i) => {
@@ -2260,6 +2254,14 @@ function App() {
                         <small>{asset.detail}</small>
                       </article>
                     ))}
+                  </div>
+                  <div className="shorts-export-actions">
+                    {isRenderingShort ? (
+                      <button className="secondary-button" type="button" onClick={cancelShortVideo}>Cancel render ({shortRenderProgress}%)</button>
+                    ) : (
+                      <button className="primary-button" type="button" onClick={() => void exportShortVideo()}>Export short video</button>
+                    )}
+                    <button className="secondary-button" type="button" onClick={downloadShortScript} disabled={isRenderingShort}>Download script</button>
                   </div>
                 </aside>
               </section>
