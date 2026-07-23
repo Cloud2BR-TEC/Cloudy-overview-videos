@@ -1144,16 +1144,15 @@ function App() {
       }
 
       // Embed the publisher mark in every exported frame.
-      const watermarkX = canvas.width - 266
+      const watermarkX = canvas.width - 276
       context.save()
-      context.fillStyle = 'rgba(4, 27, 40, .72)'
-      context.fillRect(watermarkX, 34, 212, 54)
-      context.strokeStyle = 'rgba(217, 238, 246, .5)'
-      context.lineWidth = 1
-      context.strokeRect(watermarkX, 34, 212, 54)
-      context.fillStyle = '#f5a975'
-      context.font = '800 28px Manrope, sans-serif'
-      context.fillText('Cloud2BR', watermarkX + 18, 69)
+      context.globalAlpha = 0.48
+      context.shadowColor = 'rgba(0, 0, 0, .65)'
+      context.shadowBlur = 8
+      context.shadowOffsetY = 2
+      context.fillStyle = '#d9eef6'
+      context.font = '800 34px Manrope, sans-serif'
+      context.fillText('Cloud2BR', watermarkX, 72)
       context.restore()
 
       const overallProgress = Math.min(1, elapsedSeconds / totalSeconds)
