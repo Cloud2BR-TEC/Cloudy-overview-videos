@@ -838,7 +838,7 @@ function App() {
       .map((scene, index) => {
         const visualDescription = scene.assets.length
           ? `Repository visual: ${scene.assets.map(repositoryAssetLabel).join('; ')}`
-          : `Supporting context: ${scene.supportingPoints.join('; ')}`
+          : `Presentation content: ${scene.supportingPoints.join('; ')}`
         const entry = `[${timestamp(cursor).replace(',', '.')}] Slide ${index + 1}: ${scene.title}\nVisual description: ${visualDescription}\nNarration: ${scene.narration}`
         cursor += scene.duration
         return entry
@@ -1071,13 +1071,10 @@ function App() {
       } else {
         context.fillStyle = '#f5fafc'
         context.fillRect(rightX, 140, rightW, 700)
-        context.fillStyle = '#d76639'
-        context.font = '700 22px Manrope, sans-serif'
-        context.fillText('ADDITIONAL DOCUMENTED CONTEXT', rightX + 44, 210)
         const pointsLayout = fitCanvasPoints(context, scene.supportingPoints, rightW - 130, 510)
         context.fillStyle = '#294f4b'
         context.font = `400 ${pointsLayout.fontSize}px Manrope, sans-serif`
-        let pointY = 280
+        let pointY = 220
         pointsLayout.linesByPoint.forEach((lines) => {
           context.fillStyle = '#d76639'
           context.beginPath()
@@ -1468,7 +1465,6 @@ function App() {
                         </div>
                       ) : (
                         <div className="slide-supporting-copy">
-                          <span>Additional documented context</span>
                           <ul>
                             {presentedScene.supportingPoints.map((point) => <li key={point}>{point}</li>)}
                           </ul>
