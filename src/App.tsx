@@ -1,4 +1,4 @@
-import { useRef, useState, useLayoutEffect, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useLayoutEffect, type CSSProperties } from 'react'
 import './App.css'
 import CloudyAvatar from './CloudyAvatar'
 
@@ -1560,7 +1560,7 @@ function App() {
   const [repository, setRepository] = useState<Repository | null>(null)
   const [scenes, setScenes] = useState<Scene[]>(starterScenes)
   const [selectedSceneId, setSelectedSceneId] = useState(1)
-  const [status, setStatus] = useState('Paste a public GitHub repository URL to create Cloudy’s explainer.')
+  const [, setStatus] = useState('Paste a public GitHub repository URL to create Cloudy’s explainer.')
   const [isLoading, setIsLoading] = useState(false)
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowStep>('source')
   const [isRenderingVideo, setIsRenderingVideo] = useState(false)
@@ -2535,8 +2535,8 @@ function App() {
     setStatus(`Cloudy is speaking with ${femaleVoice.name}.`)
   }
 
-  async function startVideoPreview(startIndex = 0) {
-    if (isVideoPreviewPlaying) return
+  async function startVideoPreview(startIndex = 0, restart = false) {
+    if (isVideoPreviewPlaying && !restart) return
     const runId = ++videoPreviewRunIdRef.current
     videoPreviewAbortRef.current = false
     setIsVideoPreviewPlaying(true)
@@ -2594,33 +2594,33 @@ function App() {
     }
   }
 
-  function skipToNextSlide() {
-    if (!isVideoPreviewPlaying || videoPreviewSceneIdx >= scenes.length - 1) return
+  function jumpToPreviewSlide(index: number) {
+    if (!isVideoPreviewPlaying || index < 0 || index >= scenes.length) return
+    videoPreviewRunIdRef.current += 1
+    videoPreviewAbortRef.current = true
     window.speechSynthesis.cancel()
-    videoPreviewSceneIdxRef.current = videoPreviewSceneIdx + 1
-    setVideoPreviewSceneIdx(videoPreviewSceneIdx + 1)
+    void startVideoPreview(index, true)
+  }
+
+  function skipToNextSlide() {
+    jumpToPreviewSlide(videoPreviewSceneIdxRef.current + 1)
   }
 
   function skipToPreviousSlide() {
-    if (!isVideoPreviewPlaying || videoPreviewSceneIdx <= 0) return
-    window.speechSynthesis.cancel()
-    videoPreviewSceneIdxRef.current = videoPreviewSceneIdx - 1
-    setVideoPreviewSceneIdx(videoPreviewSceneIdx - 1)
+    jumpToPreviewSlide(videoPreviewSceneIdxRef.current - 1)
   }
 
-  function toggleFullscreen() {
-    const element = document.querySelector('.slide-stage')
+  async function toggleFullscreen() {
+    const element = document.querySelector<HTMLElement>('.scene-editor')
     if (!element) return
-    if (!isFullscreen) {
-      if (element.requestFullscreen) {
-        element.requestFullscreen().catch(() => setStatus('Fullscreen not supported in this browser'))
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await element.requestFullscreen()
       }
-      setIsFullscreen(true)
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen()
-      }
-      setIsFullscreen(false)
+    } catch {
+      setStatus('Fullscreen is unavailable in this browser or window.')
     }
   }
 
@@ -2636,15 +2636,47 @@ function App() {
     setStatus(`Presentation paused at slide ${pausedIndex + 1} of ${scenes.length}.`)
   }
 
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
+  }, [])
+
+  useEffect(() => {
+    const handlePresentationKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+      if (event.key === ' ') {
+        event.preventDefault()
+        if (isVideoPreviewPlaying) pauseVideoPreview()
+        else void startVideoPreview(pausedVideoPreviewIndex ?? 0)
+      } else if (event.key === 'ArrowRight' && isVideoPreviewPlaying) {
+        event.preventDefault()
+        skipToNextSlide()
+      } else if (event.key === 'ArrowLeft' && isVideoPreviewPlaying) {
+        event.preventDefault()
+        skipToPreviousSlide()
+      } else if (event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        void toggleFullscreen()
+      } else if (event.key === 'Escape' && isVideoPreviewPlaying && !document.fullscreenElement) {
+        pauseVideoPreview()
+      }
+    }
+    window.addEventListener('keydown', handlePresentationKey)
+    return () => window.removeEventListener('keydown', handlePresentationKey)
+  })
+
   function navigateToWorkflow(step: WorkflowStep) {
     if ((step === 'story' || step === 'voice') && !repository) {
       setActiveWorkflow('source')
       setStatus('Generate an explainer before opening Story or Voice.')
-      document.getElementById('source-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       return
     }
+    if (step !== 'voice' && isVideoPreviewPlaying) pauseVideoPreview()
+    if (step !== 'voice' && isSpeaking) stopVoice()
     setActiveWorkflow(step)
-    document.getElementById(`${step}-section`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   async function previewShort(startBeat = 0) {
@@ -3703,36 +3735,33 @@ function App() {
           <button type="button" onClick={() => setStudioMode('shorts')}>Cloudy Shorts</button>
         </nav>
       </header>
-      <section className="workspace">
-        <aside className="rail" aria-label="Project workflow">
-          <button className={`rail-item ${activeWorkflow === 'source' ? 'active' : ''}`} type="button" onClick={() => navigateToWorkflow('source')} aria-current={activeWorkflow === 'source' ? 'step' : undefined}>
+      <section className={`workspace workflow-${activeWorkflow}`}>
+        <aside className="rail" aria-label="Project workflow" role="tablist">
+          <button className={`rail-item ${activeWorkflow === 'source' ? 'active' : ''}`} type="button" role="tab" onClick={() => navigateToWorkflow('source')} aria-selected={activeWorkflow === 'source'} aria-controls="source-panel">
             <span>01</span>
             <strong>Source</strong>
           </button>
-          <button className={`rail-item ${activeWorkflow === 'story' ? 'active' : ''}`} type="button" onClick={() => navigateToWorkflow('story')} aria-current={activeWorkflow === 'story' ? 'step' : undefined}>
+          <button className={`rail-item ${activeWorkflow === 'story' ? 'active' : ''}`} type="button" role="tab" onClick={() => navigateToWorkflow('story')} aria-selected={activeWorkflow === 'story'} aria-controls="story-panel" disabled={!repository}>
             <span>02</span>
             <strong>Story</strong>
           </button>
-          <button className={`rail-item ${activeWorkflow === 'voice' ? 'active' : ''}`} type="button" onClick={() => navigateToWorkflow('voice')} aria-current={activeWorkflow === 'voice' ? 'step' : undefined}>
+          <button className={`rail-item ${activeWorkflow === 'voice' ? 'active' : ''}`} type="button" role="tab" onClick={() => navigateToWorkflow('voice')} aria-selected={activeWorkflow === 'voice'} aria-controls="voice-panel" disabled={!repository}>
             <span>03</span>
             <strong>Voice</strong>
           </button>
-          <button className={`rail-item ${activeWorkflow === 'export' ? 'active' : ''}`} type="button" onClick={() => navigateToWorkflow('export')} aria-current={activeWorkflow === 'export' ? 'step' : undefined}>
+          <button className={`rail-item ${activeWorkflow === 'export' ? 'active' : ''}`} type="button" role="tab" onClick={() => navigateToWorkflow('export')} aria-selected={activeWorkflow === 'export'} aria-controls="export-panel">
             <span>04</span>
             <strong>Export</strong>
           </button>
         </aside>
-        <section className="content-column">
-          <div className="section-heading">
+        <section className="content-column" hidden={activeWorkflow === 'export'}>
+          <div className="section-heading" id="source-panel" role="tabpanel" hidden={activeWorkflow !== 'source'}>
             <div>
               <p className="eyebrow">Cloudy overview video</p>
               <h1>Choose the repository Cloudy will explain.</h1>
             </div>
-            <p className="status" aria-live="polite">
-              {status}
-            </p>
           </div>
-          <form className="repository-form" id="source-section" onSubmit={(event) => { event.preventDefault(); void loadRepository(repositoryUrl) }}>
+          <form className="repository-form" id="source-section" hidden={activeWorkflow !== 'source'} onSubmit={(event) => { event.preventDefault(); void loadRepository(repositoryUrl) }}>
             <p className="eyebrow">Public repository</p>
             <label htmlFor="repository-url">GitHub repository URL</label>
             <div className="url-entry">
@@ -3743,9 +3772,9 @@ function App() {
             </div>
             <p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p>
           </form>
-          <section className="projects-panel" aria-label="Project management">
+          <section className="projects-panel" aria-label="Project management" hidden={activeWorkflow !== 'source'}>
             <details>
-              <summary><strong>💾 Save & Load Projects</strong></summary>
+              <summary><strong>Save & Load Projects</strong></summary>
               <div className="projects-controls">
                 <div className="project-name-input">
                   <label htmlFor="project-name">Project name</label>
@@ -3760,13 +3789,13 @@ function App() {
                 </div>
                 <div className="project-actions">
                   <button type="button" onClick={saveCurrentProject} disabled={!repository || isLoading || isRenderingVideo}>
-                    💾 Save Project
+                    Save Project
                   </button>
                   <button type="button" onClick={exportCurrentProject} disabled={!repository || isLoading || isRenderingVideo}>
-                    📤 Export JSON
+                    Export JSON
                   </button>
                   <label className="import-button">
-                    📥 Import JSON
+                    Import JSON
                     <input type="file" accept=".json" onChange={importProjectFile} style={{ display: 'none' }} />
                   </label>
                   <button
@@ -3778,7 +3807,7 @@ function App() {
                     disabled={isLoading || isRenderingVideo}
                     title="Clear cached repository data"
                   >
-                    🗑️ Clear Cache
+                    Clear Cache
                   </button>
                 </div>
                 {savedProjects.length > 0 && (
@@ -3805,21 +3834,21 @@ function App() {
               </div>
             </details>
           </section>
-          <section className="projects-panel" aria-label="Template management">
+          <section className="projects-panel" aria-label="Template management" hidden={activeWorkflow !== 'source'}>
             <details>
-              <summary><strong>🎨 Custom Templates ({customTemplates.length})</strong></summary>
+              <summary><strong>Custom Templates ({customTemplates.length})</strong></summary>
               <div className="projects-controls">
                 <p style={{ fontSize: '0.9em', color: '#666' }}>
                   Load JSON-defined custom templates to extend the built-in template library.
                 </p>
                 <div className="project-actions">
                   <label className="import-button">
-                    📥 Load Templates JSON
+                    Load Templates JSON
                     <input type="file" accept=".json" onChange={importCustomTemplatesFile} style={{ display: 'none' }} />
                   </label>
                   {customTemplates.length > 0 && (
                     <button type="button" onClick={clearCustomTemplates} disabled={isLoading || isRenderingVideo}>
-                      🗑️ Clear All
+                      Clear All
                     </button>
                   )}
                 </div>
@@ -3839,9 +3868,9 @@ function App() {
               </div>
             </details>
           </section>
-          <section className="projects-panel" aria-label="Branding customization">
+          <section className="projects-panel" aria-label="Branding customization" hidden={activeWorkflow !== 'source'}>
             <details>
-              <summary><strong>🎨 Custom Branding</strong></summary>
+              <summary><strong>Custom Branding</strong></summary>
               <div className="projects-controls">
                 <p style={{ fontSize: '0.9em', color: '#666' }}>
                   Customize the logo, brand name, and theme colors for your videos.
@@ -3902,9 +3931,9 @@ function App() {
               </div>
             </details>
           </section>
-          <section className="projects-panel" aria-label="Language settings">
+          <section className="projects-panel" aria-label="Language settings" hidden={activeWorkflow !== 'source'}>
             <details>
-              <summary><strong>🌍 Language Settings</strong></summary>
+              <summary><strong>Language Settings</strong></summary>
               <div className="projects-controls">
                 <p style={{ fontSize: '0.9em', color: '#666' }}>
                   Choose your preferred interface language.
@@ -3940,9 +3969,9 @@ function App() {
             </details>
           </section>
           {repository && (
-            <section className="projects-panel" aria-label="Quality metrics">
+            <section className="projects-panel" aria-label="Quality metrics" hidden={activeWorkflow !== 'source'}>
               <details>
-                <summary><strong>📊 Content Quality & Analytics</strong></summary>
+                <summary><strong>Content Quality & Analytics</strong></summary>
                 <div className="projects-controls">
                   {(() => {
                     const quality = calculateQualityScore(repository, scenes)
@@ -3976,9 +4005,9 @@ function App() {
               </details>
             </section>
           )}
-          <section className="projects-panel" aria-label="Batch processing">
+          <section className="projects-panel" aria-label="Batch processing" hidden={activeWorkflow !== 'source'}>
             <details>
-              <summary><strong>📦 {t('batchProcessing', settings.uiLanguage)}</strong></summary>
+              <summary><strong>{t('batchProcessing', settings.uiLanguage)}</strong></summary>
               <div className="projects-controls">
                 <p style={{ fontSize: '0.9em', color: '#666' }}>
                   Process multiple repositories at once. Enter one URL per line (max 10).
@@ -4003,11 +4032,11 @@ function App() {
                 <div className="project-actions">
                   {!isBatchProcessing ? (
                     <button type="button" onClick={startBatchProcessing} disabled={isLoading || isRenderingVideo || !batchUrls.trim()}>
-                      ▶️ Start Batch Processing
+                      Start Batch Processing
                     </button>
                   ) : (
                     <button type="button" onClick={cancelBatchProcessing}>
-                      ⏹️ Cancel Batch
+                      Cancel Batch
                     </button>
                   )}
                 </div>
@@ -4019,7 +4048,7 @@ function App() {
             </details>
           </section>
           {repository && (
-            <section className="repository-card" aria-label="Repository source">
+            <section className="repository-card" aria-label="Repository source" hidden={activeWorkflow !== 'source'}>
               <div className="repository-title">
                 <div>
                   <p className="eyebrow">Source evidence</p>
@@ -4062,11 +4091,11 @@ function App() {
             </section>
           )}
           {repository ? (
-            <section className="story-area" id="story-section">
+            <section className="story-area" id={activeWorkflow === 'voice' ? 'voice-panel' : 'story-panel'} role="tabpanel" hidden={activeWorkflow !== 'story' && activeWorkflow !== 'voice'}>
               <div className="story-head">
                 <div>
-                  <p className="eyebrow">Storyboard</p>
-                  <h2>Cloudy’s explainer</h2>
+                  <p className="eyebrow">{activeWorkflow === 'voice' ? 'Voice & presentation' : 'Storyboard'}</p>
+                  <h2>{activeWorkflow === 'voice' ? 'Present Cloudy’s explainer' : 'Edit Cloudy’s explainer'}</h2>
                 </div>
                 <div className={`duration-pill ${inTargetRange ? 'ready' : ''}`}>
                   {durationLabel(effectiveTotalDuration)} <small>{speedLabel(playbackSpeed)} playback · {inTargetRange ? '10-minute base template' : 'Target: 8-12 min base template'}</small>
@@ -4111,7 +4140,7 @@ function App() {
                   <span>{selectedScene.visual}</span>
                 </div>
                 <article className="scene-editor">
-                  <div className="presentation-toolbar" id="voice-section">
+                  <div className="presentation-toolbar" id="voice-section" hidden={activeWorkflow !== 'voice'}>
                     <div>
                       <p className="eyebrow">Live presentation</p>
                       <strong>{isVideoPreviewPlaying ? `Presenting section ${videoPreviewSceneIdx + 1} of ${scenes.length}` : 'Review and edit the selected section'}</strong>
@@ -4184,7 +4213,6 @@ function App() {
                         className="secondary-button"
                         type="button"
                         onClick={toggleFullscreen}
-                        disabled={isVideoPreviewPlaying || isSpeaking}
                         title="Fullscreen mode (F)"
                         style={{ padding: '6px 12px' }}
                       >
@@ -4192,7 +4220,7 @@ function App() {
                       </button>
                     </div>
                   </div>
-                  {isVideoPreviewPlaying && (
+                  {activeWorkflow === 'voice' && isVideoPreviewPlaying && (
                     <div style={{ padding: '8px 0', background: '#f0f0f0', borderRadius: '4px', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 15px' }}>
                         <span style={{ fontSize: '0.85em', fontWeight: 'bold', minWidth: '45px' }}>
@@ -4266,23 +4294,23 @@ function App() {
                     </div>
                     <span className="preview-watermark" aria-hidden="true">Cloud2BR</span>
                   </div>
-                  <div className="video-scene-progress" aria-label="Presentation sections">
+                  <div className="video-scene-progress" aria-label="Presentation sections" hidden={activeWorkflow !== 'voice'}>
                     {scenes.map((scene, index) => (
                       <button
                         key={scene.id}
                         type="button"
                         className={`vsp-dot ${isVideoPreviewPlaying && index < videoPreviewSceneIdx ? 'done' : presentedScene.id === scene.id ? 'active' : ''}`}
                         onClick={() => {
-                          if (!isVideoPreviewPlaying) setSelectedSceneId(scene.id)
+                          if (isVideoPreviewPlaying) jumpToPreviewSlide(index)
+                          else setSelectedSceneId(scene.id)
                         }}
-                        disabled={isVideoPreviewPlaying}
                         title={scene.title}
                       >
                         {String(index + 1).padStart(2, '0')}
                       </button>
                     ))}
                   </div>
-                  <div className="editor-fields">
+                  <div className="editor-fields" hidden={activeWorkflow !== 'story'}>
                     <label>
                       Slide title
                       <input value={selectedScene.title} onChange={(event) => updateScene('title', event.target.value)} />
@@ -4306,7 +4334,7 @@ function App() {
               </div>
             </section>
           ) : (
-            <section className="story-placeholder" id="story-section">
+            <section className="story-placeholder" id="story-panel" role="tabpanel" hidden={activeWorkflow === 'source' || activeWorkflow === 'export'}>
               <p className="eyebrow">Storyboard</p>
               <h2>Generate an explainer to begin</h2>
               <p>
@@ -4315,7 +4343,7 @@ function App() {
             </section>
           )}
         </section>
-        <aside className={`review-panel ${repository ? '' : 'placeholder'}`} id="export-section">
+        <aside className={`review-panel ${repository ? '' : 'placeholder'}`} id="export-panel" role="tabpanel" hidden={activeWorkflow !== 'export'}>
           <div>
             <p className="eyebrow">Export requirements</p>
             <h2>{isExportReady ? 'Downloads ready' : 'Complete before download'}</h2>
