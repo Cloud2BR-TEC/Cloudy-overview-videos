@@ -371,6 +371,60 @@ function importProjectJson(json: string): SavedProject | null {
   return null
 }
 
+// Performance optimization: Repository data caching
+const REPOSITORY_CACHE_KEY = 'cloudy-repo-cache'
+const CACHE_EXPIRY_MS = 1000 * 60 * 30 // 30 minutes
+
+type CachedRepository = {
+  url: string
+  timestamp: number
+  repository: Repository
+  scenes: Scene[]
+}
+
+function getCachedRepository(url: string): { repository: Repository; scenes: Scene[] } | null {
+  try {
+    const stored = localStorage.getItem(REPOSITORY_CACHE_KEY)
+    if (!stored) return null
+    const cache: CachedRepository[] = JSON.parse(stored)
+    const entry = cache.find((c) => c.url === url)
+    if (!entry) return null
+    // Check if cache is expired
+    if (Date.now() - entry.timestamp > CACHE_EXPIRY_MS) {
+      // Remove expired entry
+      const updated = cache.filter((c) => c.url !== url && (Date.now() - c.timestamp <= CACHE_EXPIRY_MS))
+      localStorage.setItem(REPOSITORY_CACHE_KEY, JSON.stringify(updated))
+      return null
+    }
+    return { repository: entry.repository, scenes: entry.scenes }
+  } catch (error) {
+    console.error('Failed to load repository cache:', error)
+    return null
+  }
+}
+
+function cacheRepository(url: string, repository: Repository, scenes: Scene[]) {
+  try {
+    const stored = localStorage.getItem(REPOSITORY_CACHE_KEY)
+    const cache: CachedRepository[] = stored ? JSON.parse(stored) : []
+    // Remove old entry if exists
+    const filtered = cache.filter((c) => c.url !== url)
+    // Add new entry (keep only last 5 repositories)
+    const updated = [{ url, timestamp: Date.now(), repository, scenes }, ...filtered].slice(0, 5)
+    localStorage.setItem(REPOSITORY_CACHE_KEY, JSON.stringify(updated))
+  } catch (error) {
+    console.error('Failed to cache repository:', error)
+  }
+}
+
+function clearRepositoryCache() {
+  try {
+    localStorage.removeItem(REPOSITORY_CACHE_KEY)
+  } catch (error) {
+    console.error('Failed to clear repository cache:', error)
+  }
+}
+
 const CLOUDY_NARRATOR = 'Lessac'
 const PLAYBACK_SPEED_OPTIONS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const
 const SLIDE_FOCUS: Record<string, string> = {
@@ -1553,6 +1607,18 @@ function App() {
       setStatus('Enter a GitHub repository URL in the format: https://github.com/owner/repository')
       return
     }
+    // Performance optimization: Check cache first
+    const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}`
+    const cached = getCachedRepository(repoUrl)
+    if (cached) {
+      setRepository(cached.repository)
+      setScenes(cached.scenes)
+      setRepositoryUrl(repoUrl)
+      setSelectedSceneId(cached.scenes[0].id)
+      setShortTopicId(cached.scenes[0].id)
+      setStatus(`Loaded from cache: ${cached.scenes.length} slides ready. Cache expires in ${Math.round((CACHE_EXPIRY_MS - (Date.now() - (cached.repository as any).cachedAt || 0)) / 60000)} minutes.`)
+      return
+    }
     repositoryLoadAbortRef.current?.abort()
     const loadId = ++repositoryLoadIdRef.current
     const loadController = new AbortController()
@@ -1697,6 +1763,8 @@ function App() {
       setScenes(generatedScenes)
       setSelectedSceneId(generatedScenes[0].id)
       setShortTopicId(generatedScenes[0].id)
+      // Performance optimization: Cache repository data for faster reloads
+      cacheRepository(`https://github.com/${data.full_name}`, newRepo, generatedScenes)
       // Content quality warnings (non-blocking)
       const warnings: string[] = []
       if (documentation.length === 0) {
@@ -3400,6 +3468,17 @@ function App() {
                     📥 Import JSON
                     <input type="file" accept=".json" onChange={importProjectFile} style={{ display: 'none' }} />
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearRepositoryCache()
+                      setStatus('Repository cache cleared. Next load will fetch fresh data from GitHub.')
+                    }}
+                    disabled={isLoading || isRenderingVideo}
+                    title="Clear cached repository data"
+                  >
+                    🗑️ Clear Cache
+                  </button>
                 </div>
                 {savedProjects.length > 0 && (
                   <div className="saved-projects-list">
