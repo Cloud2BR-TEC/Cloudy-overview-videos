@@ -1560,7 +1560,7 @@ function App() {
   const [repository, setRepository] = useState<Repository | null>(null)
   const [scenes, setScenes] = useState<Scene[]>(starterScenes)
   const [selectedSceneId, setSelectedSceneId] = useState(1)
-  const [, setStatus] = useState('Paste a public GitHub repository URL to create Cloudy’s explainer.')
+  const [status, setStatus] = useState('Paste a public GitHub repository URL to create Cloudy’s explainer.')
   const [isLoading, setIsLoading] = useState(false)
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowStep>('source')
   const [isRenderingVideo, setIsRenderingVideo] = useState(false)
@@ -1872,6 +1872,7 @@ function App() {
       setSelectedSceneId(cached.scenes[0].id)
       setShortTopicId(cached.scenes[0].id)
       setStatus(`Loaded from cache: ${cached.scenes.length} slides ready. Cache expires in ${Math.round((CACHE_EXPIRY_MS - (Date.now() - (cached.repository as any).cachedAt || 0)) / 60000)} minutes.`)
+      if (studioMode === 'overview') setActiveWorkflow('story')
       return
     }
     repositoryLoadAbortRef.current?.abort()
@@ -2043,6 +2044,7 @@ function App() {
       const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
       const warningNote = warnings.length > 0 ? ` Suggestions: ${warnings.join(' ')}` : ''
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${settings.slidesPerSection} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}${warningNote}`)
+      if (studioMode === 'overview') setActiveWorkflow('story')
     } catch (error) {
       if (loadId !== repositoryLoadIdRef.current) return
       if (loadController.signal.reason === 'timeout') {
@@ -3631,7 +3633,9 @@ function App() {
               <input id="shorts-repository-url" type="text" inputMode="url" autoCapitalize="none" spellCheck={false} value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" disabled={isLoading} />
               <button className="primary-button" type="submit" disabled={isLoading}>{isLoading ? 'Reading repository' : repository ? 'Regenerate Shorts' : 'Build Shorts library'}</button>
             </div>
-            {!repository && <p>Cloudy will use English documentation and linked repository visuals to build short-form story material.</p>}
+            <p className="repository-feedback" role="status" aria-live="polite">
+              {isLoading ? 'Reading repository documentation. This can take a moment.' : status}
+            </p>
           </form>
           {repository && (
             <>
@@ -3771,6 +3775,9 @@ function App() {
               </button>
             </div>
             <p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p>
+            <p className="repository-feedback" role="status" aria-live="polite">
+              {isLoading ? 'Reading repository documentation. This can take a moment.' : status}
+            </p>
           </form>
           <section className="projects-panel" aria-label="Project management" hidden={activeWorkflow !== 'source'}>
             <details>
