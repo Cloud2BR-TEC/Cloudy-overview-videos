@@ -228,6 +228,71 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   includeMetrics: true,
 }
 
+// Persistent project storage for save/load functionality
+type SavedProject = {
+  version: number
+  name: string
+  repositoryUrl: string
+  timestamp: number
+  settings: GenerationSettings
+  scenes: Scene[]
+  repository: Repository | null
+  topic: string
+  playbackSpeed: number
+  mode: StudioMode
+}
+
+const PROJECT_VERSION = 1
+const PROJECTS_STORAGE_KEY = 'cloudy-projects'
+const MAX_SAVED_PROJECTS = 10
+
+function saveProject(project: Omit<SavedProject, 'version' | 'timestamp'>) {
+  const saved: SavedProject = { ...project, version: PROJECT_VERSION, timestamp: Date.now() }
+  const existing = loadProjects()
+  const updated = [saved, ...existing.filter((p) => p.name !== project.name)].slice(0, MAX_SAVED_PROJECTS)
+  try {
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updated))
+  } catch (error) {
+    console.error('Failed to save project to localStorage:', error)
+  }
+}
+
+function loadProjects(): SavedProject[] {
+  try {
+    const stored = localStorage.getItem(PROJECTS_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch (error) {
+    console.error('Failed to load projects from localStorage:', error)
+    return []
+  }
+}
+
+function deleteProject(projectName: string) {
+  const existing = loadProjects()
+  const updated = existing.filter((p) => p.name !== projectName)
+  try {
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updated))
+  } catch (error) {
+    console.error('Failed to delete project from localStorage:', error)
+  }
+}
+
+function exportProjectJson(project: SavedProject): string {
+  return JSON.stringify(project, null, 2)
+}
+
+function importProjectJson(json: string): SavedProject | null {
+  try {
+    const project = JSON.parse(json)
+    if (project.version === PROJECT_VERSION && project.name && project.repositoryUrl) {
+      return project as SavedProject
+    }
+  } catch (error) {
+    console.error('Failed to import project JSON:', error)
+  }
+  return null
+}
+
 const CLOUDY_NARRATOR = 'Lessac'
 const PLAYBACK_SPEED_OPTIONS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const
 const SLIDE_FOCUS: Record<string, string> = {
@@ -1072,6 +1137,8 @@ function App() {
   const [isRenderingShort, setIsRenderingShort] = useState(false)
   const [shortRenderProgress, setShortRenderProgress] = useState(0)
   const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_SETTINGS)
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>(loadProjects())
+  const [projectName, setProjectName] = useState('')
   const shortRenderAbortRef = useRef(false)
   const shortRenderAbortControllerRef = useRef<AbortController | null>(null)
   const shortPreviewRunIdRef = useRef(0)
@@ -1124,6 +1191,101 @@ function App() {
   // Auto-fit every preview text zone: shrink font until the text fits its shape (never clips/overflows).
   const shortStageRef = useRef<HTMLElement | null>(null)
   const shortBulletsKey = activeShortItems.join('|')
+  
+  function saveCurrentProject() {
+    if (!projectName.trim()) {
+      alert('Please enter a project name before saving.')
+      return
+    }
+    saveProject({
+      name: projectName.trim(),
+      repositoryUrl,
+      settings,
+      scenes,
+      repository,
+      topic: shortTopic.title,
+      playbackSpeed,
+      mode: studioMode,
+    })
+    setSavedProjects(loadProjects())
+    setStatus(`Project "${projectName.trim()}" saved successfully.`)
+  }
+  
+  function loadProjectById(name: string) {
+    const project = savedProjects.find((p) => p.name === name)
+    if (!project) return
+    setProjectName(project.name)
+    setRepositoryUrl(project.repositoryUrl)
+    setSettings(project.settings)
+    setScenes(project.scenes)
+    setRepository(project.repository)
+    // Validate playbackSpeed is in valid options
+    if (PLAYBACK_SPEED_OPTIONS.includes(project.playbackSpeed as typeof PLAYBACK_SPEED_OPTIONS[number])) {
+      setPlaybackSpeed(project.playbackSpeed as typeof PLAYBACK_SPEED_OPTIONS[number])
+    }
+    setStudioMode(project.mode)
+    const topicScene = project.scenes.find((s) => s.title === project.topic)
+    if (topicScene) setShortTopicId(topicScene.id)
+    setStatus(`Project "${name}" loaded successfully.`)
+  }
+  
+  function deleteProjectById(name: string) {
+    if (confirm(`Are you sure you want to delete project "${name}"?`)) {
+      deleteProject(name)
+      setSavedProjects(loadProjects())
+      setStatus(`Project "${name}" deleted.`)
+    }
+  }
+  
+  function exportCurrentProject() {
+    if (!projectName.trim()) {
+      alert('Please enter a project name before exporting.')
+      return
+    }
+    const project: SavedProject = {
+      version: PROJECT_VERSION,
+      timestamp: Date.now(),
+      name: projectName.trim(),
+      repositoryUrl,
+      settings,
+      scenes,
+      repository,
+      topic: shortTopic.title,
+      playbackSpeed,
+      mode: studioMode,
+    }
+    const json = exportProjectJson(project)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${projectName.trim()}.cloudy.json`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+    setStatus(`Project "${projectName.trim()}" exported.`)
+  }
+  
+  function importProjectFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const json = e.target?.result as string
+      const project = importProjectJson(json)
+      if (project) {
+        saveProject(project)
+        setSavedProjects(loadProjects())
+        loadProjectById(project.name)
+      } else {
+        alert('Failed to import project. Please check the file format.')
+      }
+    }
+    reader.readAsText(file)
+    event.target.value = '' // Reset file input
+  }
+  
   useLayoutEffect(() => {
     const stage = shortStageRef.current
     if (!stage) return
@@ -2936,6 +3098,57 @@ function App() {
             </div>
             <p>Cloudy reads public repository details only. Private repositories are not available in this browser-only version.</p>
           </form>
+          <section className="projects-panel" aria-label="Project management">
+            <details>
+              <summary><strong>💾 Save & Load Projects</strong></summary>
+              <div className="projects-controls">
+                <div className="project-name-input">
+                  <label htmlFor="project-name">Project name</label>
+                  <input
+                    id="project-name"
+                    type="text"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    placeholder="My Cloudy Project"
+                    disabled={isLoading || isRenderingVideo}
+                  />
+                </div>
+                <div className="project-actions">
+                  <button type="button" onClick={saveCurrentProject} disabled={!repository || isLoading || isRenderingVideo}>
+                    💾 Save Project
+                  </button>
+                  <button type="button" onClick={exportCurrentProject} disabled={!repository || isLoading || isRenderingVideo}>
+                    📤 Export JSON
+                  </button>
+                  <label className="import-button">
+                    📥 Import JSON
+                    <input type="file" accept=".json" onChange={importProjectFile} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {savedProjects.length > 0 && (
+                  <div className="saved-projects-list">
+                    <p><strong>Saved Projects ({savedProjects.length})</strong></p>
+                    <ul>
+                      {savedProjects.slice(0, 5).map((project) => (
+                        <li key={project.name}>
+                          <span>{project.name}</span>
+                          <small>{new Date(project.timestamp).toLocaleDateString()}</small>
+                          <div className="project-item-actions">
+                            <button type="button" onClick={() => loadProjectById(project.name)} disabled={isLoading || isRenderingVideo}>
+                              Load
+                            </button>
+                            <button type="button" onClick={() => deleteProjectById(project.name)} disabled={isLoading || isRenderingVideo}>
+                              Delete
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </details>
+          </section>
           {repository && (
             <section className="repository-card" aria-label="Repository source">
               <div className="repository-title">
