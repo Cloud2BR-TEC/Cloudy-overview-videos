@@ -299,6 +299,9 @@ type GenerationSettings = {
   customBrandName?: string
   customOutroMessage?: string
   customThemeColor?: string
+  // Internationalization
+  uiLanguage: 'en' | 'es' | 'pt' | 'fr' | 'de'
+  detectRepositoryLanguage: boolean
 }
 
 const DEFAULT_SETTINGS: GenerationSettings = {
@@ -313,6 +316,91 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   customBrandName: 'Cloudy',
   customOutroMessage: 'Keep learning and building amazing things!',
   customThemeColor: '#17384b',
+  uiLanguage: 'en',
+  detectRepositoryLanguage: true,
+}
+
+// Basic internationalization support
+const UI_STRINGS: Record<string, Record<string, string>> = {
+  en: {
+    repositoryUrl: 'GitHub repository URL',
+    generateExplainer: 'Generate explainer',
+    readingRepository: 'Reading repository',
+    projectName: 'Project name',
+    saveProject: 'Save Project',
+    exportJson: 'Export JSON',
+    importJson: 'Import JSON',
+    clearCache: 'Clear Cache',
+    customTemplates: 'Custom Templates',
+    customBranding: 'Custom Branding',
+    batchProcessing: 'Batch Processing',
+    startBatch: 'Start Batch Processing',
+    cancelBatch: 'Cancel Batch',
+  },
+  es: {
+    repositoryUrl: 'URL del repositorio de GitHub',
+    generateExplainer: 'Generar explicación',
+    readingRepository: 'Leyendo repositorio',
+    projectName: 'Nombre del proyecto',
+    saveProject: 'Guardar Proyecto',
+    exportJson: 'Exportar JSON',
+    importJson: 'Importar JSON',
+    clearCache: 'Limpiar Caché',
+    customTemplates: 'Plantillas Personalizadas',
+    customBranding: 'Marca Personalizada',
+    batchProcessing: 'Procesamiento por Lotes',
+    startBatch: 'Iniciar Lote',
+    cancelBatch: 'Cancelar Lote',
+  },
+  pt: {
+    repositoryUrl: 'URL do repositório do GitHub',
+    generateExplainer: 'Gerar explicação',
+    readingRepository: 'Lendo repositório',
+    projectName: 'Nome do projeto',
+    saveProject: 'Salvar Projeto',
+    exportJson: 'Exportar JSON',
+    importJson: 'Importar JSON',
+    clearCache: 'Limpar Cache',
+    customTemplates: 'Modelos Personalizados',
+    customBranding: 'Marca Personalizada',
+    batchProcessing: 'Processamento em Lote',
+    startBatch: 'Iniciar Lote',
+    cancelBatch: 'Cancelar Lote',
+  },
+  fr: {
+    repositoryUrl: 'URL du dépôt GitHub',
+    generateExplainer: 'Générer une explication',
+    readingRepository: 'Lecture du dépôt',
+    projectName: 'Nom du projet',
+    saveProject: 'Enregistrer le Projet',
+    exportJson: 'Exporter JSON',
+    importJson: 'Importer JSON',
+    clearCache: 'Effacer le Cache',
+    customTemplates: 'Modèles Personnalisés',
+    customBranding: 'Marque Personnalisée',
+    batchProcessing: 'Traitement par Lots',
+    startBatch: 'Démarrer le Lot',
+    cancelBatch: 'Annuler le Lot',
+  },
+  de: {
+    repositoryUrl: 'GitHub-Repository-URL',
+    generateExplainer: 'Erklärung generieren',
+    readingRepository: 'Repository lesen',
+    projectName: 'Projektname',
+    saveProject: 'Projekt Speichern',
+    exportJson: 'JSON Exportieren',
+    importJson: 'JSON Importieren',
+    clearCache: 'Cache Leeren',
+    customTemplates: 'Benutzerdefinierte Vorlagen',
+    customBranding: 'Benutzerdefiniertes Branding',
+    batchProcessing: 'Stapelverarbeitung',
+    startBatch: 'Stapel Starten',
+    cancelBatch: 'Stapel Abbrechen',
+  },
+}
+
+function t(key: string, lang: string = 'en'): string {
+  return UI_STRINGS[lang]?.[key] || UI_STRINGS.en[key] || key
 }
 
 // Persistent project storage for save/load functionality
@@ -3674,9 +3762,46 @@ function App() {
               </div>
             </details>
           </section>
+          <section className="projects-panel" aria-label="Language settings">
+            <details>
+              <summary><strong>🌍 Language Settings</strong></summary>
+              <div className="projects-controls">
+                <p style={{ fontSize: '0.9em', color: '#666' }}>
+                  Choose your preferred interface language.
+                </p>
+                <div className="project-name-input">
+                  <label htmlFor="ui-language">UI Language</label>
+                  <select
+                    id="ui-language"
+                    value={settings.uiLanguage}
+                    onChange={(event) => setSettings({ ...settings, uiLanguage: event.target.value as 'en' | 'es' | 'pt' | 'fr' | 'de' })}
+                    disabled={isLoading || isRenderingVideo}
+                    style={{ width: '100%', padding: '8px', fontSize: '1em' }}
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="pt">Português</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                  </select>
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.detectRepositoryLanguage}
+                      onChange={(event) => setSettings({ ...settings, detectRepositoryLanguage: event.target.checked })}
+                      disabled={isLoading || isRenderingVideo}
+                    />
+                    <span>Auto-detect repository language</span>
+                  </label>
+                </div>
+              </div>
+            </details>
+          </section>
           <section className="projects-panel" aria-label="Batch processing">
             <details>
-              <summary><strong>📦 Batch Processing</strong></summary>
+              <summary><strong>📦 {t('batchProcessing', settings.uiLanguage)}</strong></summary>
               <div className="projects-controls">
                 <p style={{ fontSize: '0.9em', color: '#666' }}>
                   Process multiple repositories at once. Enter one URL per line (max 10).
