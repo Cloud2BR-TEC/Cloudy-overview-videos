@@ -7,12 +7,6 @@
   <rect width="1920" height="1080" fill="url(#gallery-bg)"/>
   <path d="M0 0H720L580 850H0Z" fill="#fff" opacity=".38"/><g fill="none" stroke="#bf5b4b" stroke-opacity=".12" stroke-width="2"><circle cx="205" cy="170" r="130"/><circle cx="205" cy="170" r="200"/></g>
   <text x="90" y="122" fill="#b94b3d" font-family="Segoe UI, sans-serif" font-size="24" font-weight="800" letter-spacing="4">GALLERY</text>
-  <!-- Cloudy head, cap, and face only -->
-  <g transform="translate(350 535) scale(2.05)" filter="url(#gallery-shadow)">
-    <circle cx="-62" cy="18" r="58" fill="url(#gallery-cloud)"/><circle cx="62" cy="18" r="58" fill="url(#gallery-cloud)"/><circle cx="-31" cy="-35" r="53" fill="url(#gallery-cloud)"/><circle cx="32" cy="-35" r="53" fill="url(#gallery-cloud)"/><ellipse cy="28" rx="104" ry="70" fill="url(#gallery-cloud)"/>
-    <polygon points="-72,-54 0,-82 72,-54 0,-27" fill="#264653"/><polygon points="-72,-54 0,-73 72,-54 0,-35" fill="#3b7180"/><path d="M53-49V-4" stroke="#e76f51" stroke-width="6"/><circle cx="53" cy="3" r="8" fill="#e76f51"/>
-    <ellipse cx="-31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="-28" cy="14" r="10" fill="#243b43"/><ellipse cx="31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="34" cy="14" r="10" fill="#243b43"/><path d="M-22 43Q0 64 22 43" fill="none" stroke="#c6535a" stroke-width="7" stroke-linecap="round"/>
-  </g>
   <g filter="url(#gallery-shadow)" fill="#fff"><rect x="742" y="142" width="526" height="286" rx="18"/><rect x="1272" y="142" width="526" height="286" rx="18"/><rect x="742" y="432" width="526" height="286" rx="18"/><rect x="1272" y="432" width="526" height="286" rx="18"/></g>
   <!-- Gallery inner slots: (760,160,490,250), (1290,160,490,250), (760,450,490,250), (1290,450,490,250) -->
   <rect x="760" y="160" width="490" height="250" rx="10" fill="#2a9d8f"/><rect x="1290" y="160" width="490" height="250" rx="10" fill="#264653"/><rect x="760" y="450" width="490" height="250" rx="10" fill="#e76f51"/><rect x="1290" y="450" width="490" height="250" rx="10" fill="#8f668f"/>

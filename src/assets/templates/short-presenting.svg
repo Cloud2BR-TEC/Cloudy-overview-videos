@@ -8,12 +8,6 @@
   <circle cx="1780" cy="80" r="260" fill="#51c8bd" opacity=".1"/>
   <path d="M0 730C280 600 500 650 710 850H0Z" fill="#51c8bd" opacity=".12"/>
   <text x="90" y="122" fill="#75ddd2" font-family="Segoe UI, sans-serif" font-size="24" font-weight="800" letter-spacing="4">PRESENTING</text>
-  <!-- Cloudy head, cap, and face only -->
-  <g transform="translate(365 520) scale(2.05)" filter="url(#presenting-shadow)">
-    <circle cx="-62" cy="18" r="58" fill="url(#presenting-cloud)"/><circle cx="62" cy="18" r="58" fill="url(#presenting-cloud)"/><circle cx="-31" cy="-35" r="53" fill="url(#presenting-cloud)"/><circle cx="32" cy="-35" r="53" fill="url(#presenting-cloud)"/><ellipse cy="28" rx="104" ry="70" fill="url(#presenting-cloud)"/>
-    <polygon points="-72,-54 0,-82 72,-54 0,-27" fill="#f0a23a"/><polygon points="-72,-54 0,-73 72,-54 0,-35" fill="#ffc45b"/><path d="M53-49V-4" stroke="#75ddd2" stroke-width="6"/><circle cx="53" cy="3" r="8" fill="#75ddd2"/>
-    <ellipse cx="-31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="-28" cy="14" r="10" fill="#173442"/><ellipse cx="31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="34" cy="14" r="10" fill="#173442"/><path d="M-22 43Q0 64 22 43" fill="none" stroke="#d85c65" stroke-width="7" stroke-linecap="round"/>
-  </g>
   <!-- Presenting inner slot: x=760 y=120 width=1020 height=600 -->
   <g filter="url(#presenting-shadow)"><rect x="730" y="90" width="1080" height="660" rx="28" fill="#061821"/><rect x="760" y="120" width="1020" height="600" rx="16" fill="#f6fcfd"/></g>
   <rect x="808" y="170" width="190" height="42" rx="21" fill="#51c8bd"/><text x="903" y="198" text-anchor="middle" fill="#08242f" font-family="Segoe UI, sans-serif" font-size="18" font-weight="800">SCREEN TITLE</text>

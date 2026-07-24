@@ -8,12 +8,6 @@
   <rect width="1920" height="1080" fill="url(#stats-bg)"/><rect width="1920" height="850" fill="url(#stats-dots)"/>
   <path d="M0 760L460 280 650 470 990 80 1300 360 1680 30 1920 230" fill="none" stroke="#4fd1c5" stroke-width="4" opacity=".12"/>
   <text x="80" y="112" fill="#f7c948" font-family="Segoe UI, sans-serif" font-size="22" font-weight="800" letter-spacing="4">KEY STATS</text>
-  <!-- Cloudy head, cap, and face only -->
-  <g transform="translate(310 520) scale(1.82)" filter="url(#stats-shadow)">
-    <circle cx="-62" cy="18" r="58" fill="url(#stats-cloud)"/><circle cx="62" cy="18" r="58" fill="url(#stats-cloud)"/><circle cx="-31" cy="-35" r="53" fill="url(#stats-cloud)"/><circle cx="32" cy="-35" r="53" fill="url(#stats-cloud)"/><ellipse cy="28" rx="104" ry="70" fill="url(#stats-cloud)"/>
-    <polygon points="-72,-54 0,-82 72,-54 0,-27" fill="#f7c948"/><polygon points="-72,-54 0,-73 72,-54 0,-35" fill="#ffe080"/><path d="M53-49V-4" stroke="#4fd1c5" stroke-width="6"/><circle cx="53" cy="3" r="8" fill="#4fd1c5"/>
-    <ellipse cx="-31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="-28" cy="14" r="10" fill="#24243b"/><ellipse cx="31" cy="10" rx="16" ry="20" fill="#fff"/><circle cx="34" cy="14" r="10" fill="#24243b"/><path d="M-22 43Q0 64 22 43" fill="none" stroke="#cb5e68" stroke-width="7" stroke-linecap="round"/>
-  </g>
   <!-- Stats cards use the same 2x2 overall region: x=620..1780, y=180..720 -->
   <g filter="url(#stats-shadow)" fill="#323154" stroke="#4b4a70" stroke-width="2"><rect x="620" y="180" width="560" height="250" rx="22"/><rect x="1220" y="180" width="560" height="250" rx="22"/><rect x="620" y="470" width="560" height="250" rx="22"/><rect x="1220" y="470" width="560" height="250" rx="22"/></g>
   <g fill="#f7c948"><rect x="620" y="180" width="10" height="250" rx="5"/><rect x="1220" y="470" width="10" height="250" rx="5"/></g><g fill="#4fd1c5"><rect x="1220" y="180" width="10" height="250" rx="5"/><rect x="620" y="470" width="10" height="250" rx="5"/></g>

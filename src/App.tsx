@@ -46,6 +46,8 @@ type ShortTemplateLayout = {
 }
 
 const SHORT_NARRATION_RECT: ShortRect = [80, 850, 1760, 160]
+// Where the animated Cloudy avatar is overlaid (templates no longer bake in the mascot).
+const SHORT_CLOUDY_RECT: ShortRect = [170, 315, 340, 320]
 // Title sits in the left identity column ABOVE Cloudy (avatar centers around y=430), never over it.
 const LEFT_TITLE: ShortRect = [80, 120, 505, 175]
 
@@ -265,6 +267,56 @@ function extractBullets(narration: string): string[] {
       return true
     })
     .map((sentence) => sentence)
+}
+
+// Build a rich pool of dynamic content points drawn from the shared repository's scene text.
+function shortContentPool(scene: Scene, repository: Repository | null): string[] {
+  const pool: string[] = []
+  const add = (raw: string) => {
+    const text = raw.trim().replace(/\s+/g, ' ')
+    if (text.length < 14 || text.length > 220) return
+    const key = normalizedSentence(text)
+    if (!key || pool.some((point) => normalizedSentence(point) === key)) return
+    pool.push(text)
+  }
+  ;(scene.bullets ?? []).forEach(add)
+  scene.narration
+    .replace(/([.!?])\s+/g, '$1\n')
+    .split('\n')
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 14 && sentence.length < 220 && !isEditorialDirection(sentence))
+    .forEach(add)
+  scene.supportingPoints.forEach(add)
+  ;(repository?.topics ?? []).forEach((topic) => add(topic.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())))
+  if (repository?.description) add(repository.description)
+  return pool
+}
+
+// Fill every content slot of a template with as much dynamic repository text as fits.
+function shortItemsForLayout(scene: Scene, itemCount: number, repository: Repository | null): string[] {
+  if (itemCount <= 0) return []
+  const pool = shortContentPool(scene, repository)
+  if (pool.length === 0) return Array.from({ length: itemCount }, () => scene.title)
+  // A single large box (quote/question/callout) is filled with a longer passage from the repo.
+  if (itemCount === 1) return [pool.slice(0, 5).join(' ')]
+  const points: string[] = []
+  for (let i = 0; i < itemCount && i < pool.length; i++) points.push(pool[i])
+  // Not enough whole sentences: split remaining pool text into clauses to fill more slots.
+  if (points.length < itemCount) {
+    const clauses: string[] = []
+    pool.forEach((sentence) =>
+      sentence
+        .split(/[,;:]\s+/)
+        .map((clause) => clause.trim())
+        .filter((clause) => clause.length >= 14)
+        .forEach((clause) => {
+          const key = normalizedSentence(clause)
+          if (!points.some((p) => normalizedSentence(p) === key) && !clauses.some((p) => normalizedSentence(p) === key)) clauses.push(clause)
+        }),
+    )
+    for (let i = 0; points.length < itemCount && i < clauses.length; i++) points.push(clauses[i])
+  }
+  return points
 }
 
 const STARTER_NARRATIONS = [
@@ -860,10 +912,10 @@ function App() {
   const activeShortScene = shortSourceScenes[shortPreviewBeatIdx] ?? shortTopic
   const activeShortLayout = SHORT_TEMPLATE_LAYOUTS[activeShortTemplate.key]
   const activeShortAssets = activeShortScene.assets.length ? activeShortScene.assets.slice(0, 4) : activeShortScene.asset ? [activeShortScene.asset] : []
-  const activeShortBullets = (activeShortScene.bullets.length ? activeShortScene.bullets : extractBullets(activeShortScene.narration)).slice(0, 5)
+  const activeShortItems = shortItemsForLayout(activeShortScene, activeShortLayout.items.length, repository)
   // Auto-fit every preview text zone: shrink font until the text fits its shape (never clips/overflows).
   const shortStageRef = useRef<HTMLElement | null>(null)
-  const shortBulletsKey = activeShortBullets.join('|')
+  const shortBulletsKey = activeShortItems.join('|')
   useLayoutEffect(() => {
     const stage = shortStageRef.current
     if (!stage) return
@@ -2136,11 +2188,52 @@ function App() {
           const image = sceneAssetImages[index]
           if (image) drawSlotImage(image, ...slot)
         })
-        bullets.slice(0, layout.items.length).forEach((bullet, index) => {
+        const slotItems = shortItemsForLayout(scene, layout.items.length, repository)
+        slotItems.forEach((point, index) => {
           const slot = layout.items[index]
+          if (!slot) return
           const contentSize = layout.mono ? 26 : slot[2] < 220 ? 22 : 30
-          drawSlotText(bullet, ...slot, contentSize, layout.contentColor, layout.align)
+          drawSlotText(point, ...slot, contentSize, layout.contentColor, layout.align)
         })
+        // Animated talking Cloudy head, overlaid where templates used to bake in the mascot.
+        const [clx, cly, clw, clh] = SHORT_CLOUDY_RECT
+        const cloudyScale = Math.min(clw / 300, clh / 224)
+        const cloudyCx = clx + clw / 2
+        const cloudyCy = cly + clh / 2 + Math.sin(t * 2) * 8
+        ctx.save()
+        ctx.translate(cloudyCx, cloudyCy)
+        ctx.rotate(Math.sin(t * 1.6) * 0.03)
+        ctx.scale(cloudyScale, cloudyScale)
+        const TAU = Math.PI * 2
+        // soft ground shadow
+        ctx.save(); ctx.globalAlpha = 0.2; ctx.fillStyle = '#0b1f2a'; ctx.beginPath(); ctx.ellipse(0, 104, 118, 22, 0, 0, TAU); ctx.fill(); ctx.restore()
+        // cloud puffs
+        ctx.fillStyle = '#ffffff'
+        const puff = (px: number, py: number, r: number) => { ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill() }
+        puff(-78, 20, 72); puff(78, 20, 72); puff(-36, -48, 62); puff(38, -48, 62)
+        ctx.beginPath(); ctx.ellipse(0, 28, 126, 82, 0, 0, TAU); ctx.fill()
+        // graduation cap
+        ctx.fillStyle = '#24516c'; ctx.beginPath(); ctx.moveTo(-76, -62); ctx.lineTo(0, -96); ctx.lineTo(76, -62); ctx.lineTo(0, -28); ctx.closePath(); ctx.fill()
+        ctx.fillStyle = '#367594'; ctx.beginPath(); ctx.moveTo(-76, -62); ctx.lineTo(0, -86); ctx.lineTo(76, -62); ctx.lineTo(0, -38); ctx.closePath(); ctx.fill()
+        ctx.strokeStyle = '#f2a66f'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(50, -53); ctx.lineTo(50, 6); ctx.stroke()
+        ctx.fillStyle = '#f2a66f'; ctx.beginPath(); ctx.arc(50, 13, 8, 0, TAU); ctx.fill()
+        // eyes (with occasional blink)
+        const blink = Math.sin(t * 1.7) > 0.94 ? 0.16 : 1
+        ctx.fillStyle = '#ffffff'
+        ctx.beginPath(); ctx.ellipse(-31, 4, 15, 18, 0, 0, TAU); ctx.fill()
+        ctx.beginPath(); ctx.ellipse(31, 4, 15, 18, 0, 0, TAU); ctx.fill()
+        ctx.fillStyle = '#233849'
+        ctx.beginPath(); ctx.ellipse(-29, 7, 10, 10 * blink, 0, 0, TAU); ctx.fill()
+        ctx.beginPath(); ctx.ellipse(33, 7, 10, 10 * blink, 0, 0, TAU); ctx.fill()
+        ctx.fillStyle = '#ffffff'
+        ctx.beginPath(); ctx.arc(-26, 2, 3, 0, TAU); ctx.fill()
+        ctx.beginPath(); ctx.arc(36, 2, 3, 0, TAU); ctx.fill()
+        // talking mouth (opens and closes)
+        const mouthOpen = Math.abs(Math.sin(t * 7)) * 11 + 2
+        ctx.fillStyle = '#c43830'
+        ctx.beginPath(); ctx.moveTo(-18, 42); ctx.quadraticCurveTo(0, 42 + mouthOpen, 18, 42); ctx.quadraticCurveTo(0, 42 + mouthOpen * 0.35, -18, 42); ctx.fill()
+        ctx.strokeStyle = '#d45b5b'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-18, 42); ctx.quadraticCurveTo(0, 42 + mouthOpen, 18, 42); ctx.stroke()
+        ctx.restore()
       } else if (action === 'intro') {
         // ── Cloudy walks in from left, title appears ──
         const walkX = eased * W * 0.38
@@ -2492,7 +2585,7 @@ function App() {
                   <img className="short-stage-template" src={activeShortTemplate.url} alt="" aria-hidden="true" />
                   <div className="short-stage-plates" aria-hidden="true">
                     {!activeShortLayout.noTitlePlate && <span className={`zone-plate ${activeShortLayout.dark ? 'dark' : 'light'}`} style={shortRectStyle(activeShortLayout.title)} />}
-                    {activeShortLayout.contentPlate && activeShortBullets.slice(0, activeShortLayout.items.length).map((_, index) => (
+                    {activeShortLayout.contentPlate && activeShortItems.map((_, index) => (
                       <span key={index} className={`zone-plate ${activeShortLayout.dark ? 'dark' : 'light'}`} style={shortRectStyle(activeShortLayout.items[index])} />
                     ))}
                   </div>
@@ -2501,9 +2594,12 @@ function App() {
                       <img key={asset} src={asset} alt={`${activeShortScene.assetLabel} ${index + 1}`} style={shortRectStyle(activeShortLayout.media?.[index] ?? [0, 0, 0, 0])} />
                     ))}
                   </div>
+                  <div className="short-stage-cloudy" style={shortRectStyle(SHORT_CLOUDY_RECT)}>
+                    <CloudyAvatar speaking={isShortPreviewPlaying} size={280} />
+                  </div>
                   <h2 className="short-stage-title" data-fit-frac="0.041" data-fit-cap="32" style={{ ...shortRectStyle(activeShortLayout.title), color: activeShortLayout.titleColor }}>{activeShortScene.title}</h2>
                   <div className={`short-stage-content${activeShortLayout.mono ? ' mono' : ''}`}>
-                    {activeShortBullets.slice(0, activeShortLayout.items.length).map((bullet, index) => (
+                    {activeShortItems.map((bullet, index) => (
                       <p key={`${index}-${bullet}`} data-fit-frac="0.026" data-fit-cap="15" style={{ ...shortRectStyle(activeShortLayout.items[index]), color: activeShortLayout.contentColor, textAlign: activeShortLayout.align }}>{bullet}</p>
                     ))}
                   </div>
