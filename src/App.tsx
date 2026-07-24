@@ -206,10 +206,28 @@ type WorkflowStep = 'source' | 'story' | 'voice' | 'export'
 type StudioMode = 'landing' | 'overview' | 'shorts'
 
 const starterRepository = 'https://github.com/Cloud2BR-TEC/ai-academy-101-ml'
-const SLIDES_PER_SECTION = 10
-const TEMPLATE_SLIDE_SECONDS = 12
-const VOICE_RATE = 1.15
-const BASE_NARRATION_WORDS_PER_MINUTE = 130
+
+// User-configurable generation settings
+type GenerationSettings = {
+  slidesPerSection: number
+  templateSlideDuration: number
+  voiceRate: number
+  narrationWordsPerMinute: number
+  shortSlideDuration: number
+  maxScenes: number
+  includeMetrics: boolean
+}
+
+const DEFAULT_SETTINGS: GenerationSettings = {
+  slidesPerSection: 10,
+  templateSlideDuration: 12,
+  voiceRate: 1.15,
+  narrationWordsPerMinute: 130,
+  shortSlideDuration: 10,
+  maxScenes: 50,
+  includeMetrics: true,
+}
+
 const CLOUDY_NARRATOR = 'Lessac'
 const PLAYBACK_SPEED_OPTIONS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const
 const SLIDE_FOCUS: Record<string, string> = {
@@ -265,9 +283,9 @@ const SLIDE_FOCUS: Record<string, string> = {
   'Final recap': 'Close by connecting the project purpose, practical path, and next learning opportunity.',
 }
 
-function wordsToSeconds(text: string) {
+function wordsToSeconds(text: string, settings: GenerationSettings = DEFAULT_SETTINGS) {
   const words = text.trim().split(/\s+/).filter(Boolean).length
-  return Math.min(15, Math.max(10, Math.round((words / (BASE_NARRATION_WORDS_PER_MINUTE * VOICE_RATE)) * 60)))
+  return Math.min(15, Math.max(10, Math.round((words / (settings.narrationWordsPerMinute * settings.voiceRate)) * 60)))
 }
 function limitWords(text: string, maxWords: number) {
   return text.trim().split(/\s+/).slice(0, maxWords).join(' ')
@@ -329,7 +347,7 @@ function extractBullets(narration: string): string[] {
 }
 
 // Build a rich pool of dynamic content points drawn from the shared repository's scene text.
-function shortContentPool(scene: Scene, repository: Repository | null): string[] {
+function shortContentPool(scene: Scene, repository: Repository | null, settings: GenerationSettings = DEFAULT_SETTINGS): string[] {
   const pool: string[] = []
   const add = (raw: string) => {
     const text = cleanRepositoryProse(raw)
@@ -353,6 +371,12 @@ function shortContentPool(scene: Scene, repository: Repository | null): string[]
       .filter((point) => sharedContentWordCount(point, scene.title) >= 1 || sharedContentWordCount(point, scene.narration) >= 2)
       .slice(0, 8)
     repositoryEvidence.forEach(add)
+    // Include repository metrics when enabled and relevant to scene
+    if (settings.includeMetrics && /\b(stat|metric|number|star|issue|license|popular)\b/i.test(scene.title)) {
+      if (repository.stars > 0) add(`${repository.stars} GitHub stars`)
+      if (repository.openIssues > 0) add(`${repository.openIssues} open issues`)
+      if (repository.license) add(`Licensed under ${repository.license}`)
+    }
   }
   ;(repository?.topics ?? []).forEach((topic) => add(topic.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())))
   if (repository?.description) add(repository.description)
@@ -378,10 +402,10 @@ function shortSpokenText(scene: Scene, layout: ShortTemplateLayout, repository: 
   return parts.join('. ').replace(/\.{2,}/g, '.')
 }
 
-function shortSpokenSeconds(text: string, playbackSpeed: number) {
+function shortSpokenSeconds(text: string, playbackSpeed: number, settings: GenerationSettings = DEFAULT_SETTINGS) {
   const words = text.trim().split(/\s+/).filter(Boolean).length
-  const spokenSeconds = (words / (BASE_NARRATION_WORDS_PER_MINUTE * VOICE_RATE * playbackSpeed)) * 60
-  return Math.max(shortSlideDuration(playbackSpeed), spokenSeconds + 0.6)
+  const spokenSeconds = (words / (settings.narrationWordsPerMinute * settings.voiceRate * playbackSpeed)) * 60
+  return Math.max(settings.shortSlideDuration / playbackSpeed, spokenSeconds + 0.6)
 }
 
 function splitSpokenText(text: string, maxCharacters = 180): string[] {
@@ -873,7 +897,7 @@ function materialPassages(section: { heading: string; body: string; imageLabels:
       imageLabels: index === 0 ? section.imageLabels : [],
     }))
 }
-function buildScenes(repo: Repository): Scene[] {
+function buildScenes(repo: Repository, settings: GenerationSettings = DEFAULT_SETTINGS): Scene[] {
   const allSections = [...parseReadmeSections(repo.readme), ...parseReadmeSections(repo.documentation)]
   const materialSections = allSections.filter(isMaterialSection)
   const materialCandidates = [...materialSections, ...materialSections.flatMap(materialPassages)]
@@ -889,7 +913,7 @@ function buildScenes(repo: Repository): Scene[] {
   const result: Scene[] = []
   const usedEvidence: string[] = []
   for (const material of uniqueCandidates) {
-    if (result.length === 50) break
+    if (result.length === settings.maxScenes) break
     const title = cleanRepositoryProse(cleanSlideTitle(material.heading))
     const evidence = selectDistinctEvidence(material.body, repositoryText, title, 'No repository visual selected', usedEvidence)
     if (!evidence) continue
@@ -905,10 +929,10 @@ function buildScenes(repo: Repository): Scene[] {
     const index = result.length
     const scene: Scene = {
       id: index + 1,
-      section: Math.floor(index / SLIDES_PER_SECTION) + 1,
-      slideInSection: (index % SLIDES_PER_SECTION) + 1,
+      section: Math.floor(index / settings.slidesPerSection) + 1,
+      slideInSection: (index % settings.slidesPerSection) + 1,
       title,
-      duration: TEMPLATE_SLIDE_SECONDS,
+      duration: settings.templateSlideDuration,
       narration,
       visual: asset ? `Repository image: ${assetLabel}` : `Material focus: ${title}`,
       bullets: buildEvidenceBullets(evidence, title),
@@ -924,7 +948,7 @@ function buildScenes(repo: Repository): Scene[] {
     }
     result.push(scene)
   }
-  if (result.length !== 50) throw new Error(`Cloudy found ${result.length} distinct material passages, but 50 are required. Add more substantive README or English docs content and try again.`)
+  if (result.length < Math.ceil(settings.maxScenes * 0.6)) throw new Error(`Cloudy found ${result.length} distinct material passages, but at least ${Math.ceil(settings.maxScenes * 0.6)} are required. Add more substantive README or English docs content and try again.`)
   return result
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
@@ -1047,6 +1071,7 @@ function App() {
   const [pausedShortBeatIndex, setPausedShortBeatIndex] = useState<number | null>(null)
   const [isRenderingShort, setIsRenderingShort] = useState(false)
   const [shortRenderProgress, setShortRenderProgress] = useState(0)
+  const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_SETTINGS)
   const shortRenderAbortRef = useRef(false)
   const shortRenderAbortControllerRef = useRef<AbortController | null>(null)
   const shortPreviewRunIdRef = useRef(0)
@@ -1237,10 +1262,10 @@ function App() {
         documentation,
         assets,
       }
-      setStatus('Repository content loaded. Building 50 distinct slides.')
+      setStatus(`Repository content loaded. Building up to ${settings.maxScenes} distinct slides.`)
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
       if (loadController.signal.aborted) throw new DOMException('Repository load aborted', 'AbortError')
-      const generatedScenes = buildScenes(newRepo)
+      const generatedScenes = buildScenes(newRepo, settings)
       setRepositoryUrl(`https://github.com/${data.full_name}`)
       setRepository(newRepo)
       setScenes(generatedScenes)
@@ -1249,7 +1274,7 @@ function App() {
       const matchedImageCount = generatedScenes.filter((scene) => scene.asset).length
       const imageNote = assets.length ? `${matchedImageCount} slide${matchedImageCount === 1 ? '' : 's'} received a verified topic-matched image; unmatched slides use the material-focused placeholder.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
       const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
-      setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${SLIDES_PER_SECTION} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}`)
+      setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${settings.slidesPerSection} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}`)
     } catch (error) {
       if (loadId !== repositoryLoadIdRef.current) return
       if (loadController.signal.reason === 'timeout') {
@@ -1488,7 +1513,7 @@ function App() {
         }
         const source = audioContext.createBufferSource()
         source.buffer = narrationBuffers[sceneIndex]
-        source.playbackRate.value = VOICE_RATE * playbackSpeed
+        source.playbackRate.value = settings.voiceRate * playbackSpeed
         source.connect(audioDestination)
         source.addEventListener('ended', () => {
           if (activeNarrationSource === source) setIsSpeaking(false)
@@ -1732,7 +1757,7 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(selectedScene.narration)
     utterance.voice = femaleVoice
     utterance.lang = femaleVoice?.lang ?? 'en-US'
-    utterance.rate = VOICE_RATE * playbackSpeed
+    utterance.rate = settings.voiceRate * playbackSpeed
     utterance.pitch = 1
     utterance.onend = () => setIsSpeaking(false)
     utterance.onerror = () => setIsSpeaking(false)
@@ -1765,7 +1790,7 @@ function App() {
         const utterance = new SpeechSynthesisUtterance(scenes[i].narration)
         utterance.voice = voice
         utterance.lang = voice?.lang ?? 'en-US'
-        utterance.rate = VOICE_RATE * playbackSpeed
+        utterance.rate = settings.voiceRate * playbackSpeed
         utterance.pitch = 1
         utterance.onstart = () => setIsSpeaking(true)
         utterance.onend = () => {
@@ -1843,7 +1868,7 @@ function App() {
             const timeout = window.setTimeout(() => {
               window.speechSynthesis.cancel()
               finish(false)
-            }, Math.max(8_000, (words / (BASE_NARRATION_WORDS_PER_MINUTE * VOICE_RATE * playbackSpeed)) * 60_000 + 4_000))
+            }, Math.max(8_000, (words / (settings.narrationWordsPerMinute * settings.voiceRate * playbackSpeed)) * 60_000 + 4_000))
             const finish = (completed: boolean) => {
               if (settled) return
               settled = true
@@ -1853,7 +1878,7 @@ function App() {
             const utterance = new SpeechSynthesisUtterance(chunk)
             utterance.voice = voice
             utterance.lang = voice.lang ?? 'en-US'
-            utterance.rate = VOICE_RATE * playbackSpeed
+            utterance.rate = settings.voiceRate * playbackSpeed
             utterance.pitch = 1
             utterance.onend = () => finish(true)
             utterance.onerror = () => finish(false)
@@ -2014,7 +2039,7 @@ function App() {
     const chunks: BlobPart[] = []
     recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data) })
     const videoReady = new Promise<Blob>((resolve) => recorder.addEventListener('stop', () => resolve(new Blob(chunks, { type: 'video/webm' })), { once: true }))
-    const narrationRate = VOICE_RATE * playbackSpeed
+    const narrationRate = settings.voiceRate * playbackSpeed
     const sceneDurations = narrationBuffers.map((buffer) => Math.max(shortSlideDuration(playbackSpeed), buffer.duration / narrationRate + 0.35))
     const totalSeconds = sceneDurations.reduce((total, duration) => total + duration, 0)
     // Content-aware template per slide; each remains until its complete narration finishes.
