@@ -294,6 +294,11 @@ type GenerationSettings = {
   shortSlideDuration: number
   maxScenes: number
   includeMetrics: boolean
+  // Custom branding
+  customLogoUrl?: string
+  customBrandName?: string
+  customOutroMessage?: string
+  customThemeColor?: string
 }
 
 const DEFAULT_SETTINGS: GenerationSettings = {
@@ -304,6 +309,10 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   shortSlideDuration: 10,
   maxScenes: 50,
   includeMetrics: true,
+  customLogoUrl: '',
+  customBrandName: 'Cloudy',
+  customOutroMessage: 'Keep learning and building amazing things!',
+  customThemeColor: '#17384b',
 }
 
 // Persistent project storage for save/load functionality
@@ -3535,6 +3544,69 @@ function App() {
                     </ul>
                   </div>
                 )}
+              </div>
+            </details>
+          </section>
+          <section className="projects-panel" aria-label="Branding customization">
+            <details>
+              <summary><strong>🎨 Custom Branding</strong></summary>
+              <div className="projects-controls">
+                <p style={{ fontSize: '0.9em', color: '#666' }}>
+                  Customize the logo, brand name, and theme colors for your videos.
+                </p>
+                <div className="project-name-input">
+                  <label htmlFor="brand-name">Brand Name</label>
+                  <input
+                    id="brand-name"
+                    type="text"
+                    value={settings.customBrandName || 'Cloudy'}
+                    onChange={(event) => setSettings({ ...settings, customBrandName: event.target.value })}
+                    placeholder="Your Brand Name"
+                    disabled={isLoading || isRenderingVideo}
+                  />
+                </div>
+                <div className="project-name-input">
+                  <label htmlFor="logo-url">Custom Logo URL</label>
+                  <input
+                    id="logo-url"
+                    type="url"
+                    value={settings.customLogoUrl || ''}
+                    onChange={(event) => setSettings({ ...settings, customLogoUrl: event.target.value })}
+                    placeholder="https://example.com/logo.png"
+                    disabled={isLoading || isRenderingVideo}
+                  />
+                </div>
+                <div className="project-name-input">
+                  <label htmlFor="theme-color">Theme Color</label>
+                  <input
+                    id="theme-color"
+                    type="color"
+                    value={settings.customThemeColor || '#17384b'}
+                    onChange={(event) => setSettings({ ...settings, customThemeColor: event.target.value })}
+                    disabled={isLoading || isRenderingVideo}
+                    style={{ height: '40px', width: '100%', cursor: 'pointer' }}
+                  />
+                </div>
+                <div className="project-name-input">
+                  <label htmlFor="outro-message">Outro Message</label>
+                  <textarea
+                    id="outro-message"
+                    value={settings.customOutroMessage || 'Keep learning and building amazing things!'}
+                    onChange={(event) => setSettings({ ...settings, customOutroMessage: event.target.value })}
+                    placeholder="Custom message for video outro"
+                    disabled={isLoading || isRenderingVideo}
+                    style={{ minHeight: '60px', width: '100%', padding: '8px', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div className="project-actions">
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, customLogoUrl: '', customBrandName: 'Cloudy', customOutroMessage: 'Keep learning and building amazing things!', customThemeColor: '#17384b' })}
+                    disabled={isLoading || isRenderingVideo}
+                  >
+                    Reset to Defaults
+                  </button>
+                </div>
               </div>
             </details>
           </section>
