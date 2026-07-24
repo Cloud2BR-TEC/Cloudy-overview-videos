@@ -314,6 +314,44 @@ function shortSpokenSeconds(text: string, playbackSpeed: number) {
   return Math.max(shortSlideDuration(playbackSpeed), spokenSeconds + 0.6)
 }
 
+function splitSpokenText(text: string, maxCharacters = 180): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [text]
+  const chunks: string[] = []
+  sentences.forEach((sentence) => {
+    const words = sentence.split(/\s+/).filter(Boolean)
+    let chunk = ''
+    words.forEach((word) => {
+      const candidate = chunk ? `${chunk} ${word}` : word
+      if (chunk && candidate.length > maxCharacters) {
+        chunks.push(chunk)
+        chunk = word
+      } else {
+        chunk = candidate
+      }
+    })
+    if (chunk) chunks.push(chunk)
+  })
+  return chunks
+}
+
+function concatenateAudioBuffers(audioContext: AudioContext, buffers: AudioBuffer[]): AudioBuffer {
+  if (buffers.length === 0) throw new Error('Cloudy did not produce audio for this beat.')
+  if (buffers.length === 1) return buffers[0]
+  const sampleRate = buffers[0].sampleRate
+  if (!buffers.every((buffer) => buffer.sampleRate === sampleRate)) throw new Error('Cloudy produced incompatible audio sample rates.')
+  const channels = Math.max(...buffers.map((buffer) => buffer.numberOfChannels))
+  const length = buffers.reduce((total, buffer) => total + buffer.length, 0)
+  const combined = audioContext.createBuffer(channels, length, sampleRate)
+  let offset = 0
+  buffers.forEach((buffer) => {
+    for (let channel = 0; channel < channels; channel += 1) {
+      combined.getChannelData(channel).set(buffer.getChannelData(Math.min(channel, buffer.numberOfChannels - 1)), offset)
+    }
+    offset += buffer.length
+  })
+  return combined
+}
+
 // Fill every content slot of a template with as much dynamic repository text as fits.
 function shortItemsForLayout(scene: Scene, itemCount: number, repository: Repository | null): string[] {
   if (itemCount <= 0) return []
@@ -389,6 +427,20 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
     }
   }
   throw lastError instanceof Error ? lastError : new Error('GitHub request failed')
+}
+
+async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await mapper(items[index])
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
 function durationLabel(seconds: number) {
@@ -786,7 +838,7 @@ function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageEle
   context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight)
 }
 function generateNarrationAudio(
-  scenes: Scene[],
+  scenes: Array<{ narration: string }>,
   onProgress: (phase: 'model' | 'scene', progress: number) => void,
   signal: AbortSignal,
 ) {
@@ -1009,12 +1061,21 @@ function App() {
         stargazers_count: number
         open_issues_count: number
       }
+      if (!data.default_branch) throw new Error('This repository has no default branch. Check that it is not empty or unavailable.')
       const readmeData = readmeResponse.ok ? ((await readmeResponse.json()) as { content?: string }) : null
       const readmeText = readmeData?.content ? decodeBase64(readmeData.content) : ''
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
       setStatus('Repository found. Reading English documentation and visuals.')
       const treeResponse = await fetchWithRetry(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(data.default_branch)}?recursive=1`, { headers: apiHeaders, signal: loadController.signal })
-      if (!treeResponse.ok) throw new Error(`GitHub could not read the repository files (${treeResponse.status}).`)
+      if (!treeResponse.ok) {
+        if (treeResponse.status === 429 || treeResponse.status === 403) {
+          const retryAfter = treeResponse.headers.get('Retry-After')
+          const resetAt = treeResponse.headers.get('X-RateLimit-Reset')
+          const wait = retryAfter ? `${retryAfter} seconds` : resetAt ? `until ${new Date(Number(resetAt) * 1_000).toLocaleTimeString()}` : 'a few minutes'
+          throw new Error(`GitHub is rate limiting repository file requests. Wait ${wait} and try again.`)
+        }
+        throw new Error(`GitHub could not read the repository files (${treeResponse.status}).`)
+      }
       const treeData = treeResponse.ok
         ? ((await treeResponse.json()) as {
             tree?: Array<{ path: string; type: string; size?: number }>
@@ -1030,17 +1091,18 @@ function App() {
         .filter((entry, index, entries) => entries.findIndex((candidate) => documentationContentKey(candidate.path) === documentationContentKey(entry.path)) === index)
         .map((entry) => entry.path)
         .slice(0, 24)
-      const documentationTexts = await Promise.all(
-        documentationPaths.map(async (path) => {
+      let completedDocuments = 0
+      const documentationTexts = await mapWithConcurrency(documentationPaths, 5, async (path) => {
           try {
             const response = await fetchWithRetry(`https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${encodeURIComponent(data.default_branch)}/${path.split('/').map(encodeURIComponent).join('/')}`, { signal: loadController.signal }, 2)
+            completedDocuments += 1
+            setStatus(`Reading documentation ${completedDocuments} of ${documentationPaths.length}.`)
             return response.ok ? response.text() : ''
           } catch {
             if (loadController.signal.aborted) throw new DOMException('Repository load aborted', 'AbortError')
             return ''
           }
-        }),
-      )
+        })
       const documentation = documentationTexts.filter(Boolean).join('\n\n')
       const documentationFileCount = documentationTexts.filter(Boolean).length
       const storyboardSource = documentation || readmeText
@@ -1665,25 +1727,40 @@ function App() {
       if (shortPreviewAbortRef.current || runId !== shortPreviewRunIdRef.current) break
       setShortPreviewBeatIdx(i)
       const beatStartedAt = performance.now()
-      const speechChunks = shortSpokenScripts[i].match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((chunk) => chunk.trim()).filter(Boolean) ?? [shortSpokenScripts[i]]
+      const speechChunks = splitSpokenText(shortSpokenScripts[i])
       for (const chunk of speechChunks) {
         if (shortPreviewAbortRef.current || runId !== shortPreviewRunIdRef.current) break
-        await new Promise<void>((resolve) => {
-          let settled = false
-          const finish = () => {
-            if (settled) return
-            settled = true
-            resolve()
-          }
-          const utterance = new SpeechSynthesisUtterance(chunk)
-          utterance.voice = voice
-          utterance.lang = voice.lang ?? 'en-US'
-          utterance.rate = VOICE_RATE * playbackSpeed
-          utterance.pitch = 1
-          utterance.onend = finish
-          utterance.onerror = finish
-          window.speechSynthesis.speak(utterance)
-        })
+        let spoken = false
+        for (let attempt = 0; attempt < 2 && !spoken && !shortPreviewAbortRef.current; attempt += 1) {
+          spoken = await new Promise<boolean>((resolve) => {
+            let settled = false
+            const words = chunk.split(/\s+/).filter(Boolean).length
+            const timeout = window.setTimeout(() => {
+              window.speechSynthesis.cancel()
+              finish(false)
+            }, Math.max(8_000, (words / (BASE_NARRATION_WORDS_PER_MINUTE * VOICE_RATE * playbackSpeed)) * 60_000 + 4_000))
+            const finish = (completed: boolean) => {
+              if (settled) return
+              settled = true
+              window.clearTimeout(timeout)
+              resolve(completed)
+            }
+            const utterance = new SpeechSynthesisUtterance(chunk)
+            utterance.voice = voice
+            utterance.lang = voice.lang ?? 'en-US'
+            utterance.rate = VOICE_RATE * playbackSpeed
+            utterance.pitch = 1
+            utterance.onend = () => finish(true)
+            utterance.onerror = () => finish(false)
+            window.speechSynthesis.resume()
+            window.speechSynthesis.speak(utterance)
+          })
+        }
+        if (!spoken && !shortPreviewAbortRef.current) {
+          shortPreviewAbortRef.current = true
+          setStatus(`Cloudy could not finish beat ${i + 1} after retrying. Replay it or export the video to use Cloudy's local voice.`)
+          break
+        }
       }
       const minimumBeatMs = shortSlideDuration(playbackSpeed) * 1000
       const remainingMs = minimumBeatMs - (performance.now() - beatStartedAt)
@@ -1721,7 +1798,7 @@ function App() {
     if (!repository || !shortNarration) return
     const beats = shortSourceScenes.map((scene, index) => `${index + 1}. ${scene.title}\n${shortSpokenScripts[index]}`).join('\n\n')
     const assets = shortAssetEntries.map((asset) => `- ${asset.name}: ${asset.detail}`).join('\n')
-    const content = `# Cloudy Short: ${shortTopic.title}\n\n- Repository: ${repository.fullName}\n- Runtime: ${durationLabel(shortRuntime)} at ${speedLabel(playbackSpeed)}\n- Format: Vertical short\n\n## Narration\n\n${shortNarration}\n\n## Story beats\n\n${beats}\n\n## Production assets\n\n${assets}\n`
+    const content = `# Cloudy Short: ${shortTopic.title}\n\n- Repository: ${repository.fullName}\n- Runtime: ${durationLabel(shortRuntime)} at ${speedLabel(playbackSpeed)}\n- Format: Horizontal 1920x1080\n\n## Narration\n\n${shortNarration}\n\n## Story beats\n\n${beats}\n\n## Production assets\n\n${assets}\n`
     downloadFile(`cloudy-short-${normalizedSentence(shortTopic.title).replace(/\s+/g, '-') || 'topic'}.md`, content, 'text/markdown')
     setStatus('Cloudy Shorts script downloaded.')
   }
@@ -1755,8 +1832,11 @@ function App() {
     const assetImageByUrl = new Map(usedAssets.map((asset, i) => [asset, assetImages[i]]))
     const templateImages: (HTMLCanvasElement | null)[] = await Promise.all(
       SHORT_TEMPLATES.map(async ({ url }) => {
+        const templateController = new AbortController()
+        const timeoutId = window.setTimeout(() => templateController.abort(), 8_000)
         try {
-          const response = await fetch(url)
+          const response = await fetch(url, { signal: templateController.signal })
+          if (!response.ok) return null
           const svgText = await response.text()
           const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' })
           const objectUrl = URL.createObjectURL(blob)
@@ -1777,13 +1857,17 @@ function App() {
           return offscreen
         } catch {
           return null
+        } finally {
+          window.clearTimeout(timeoutId)
         }
       }),
     )
     let narrationBuffers: AudioBuffer[]
     try {
+      const shortSpeechChunks = shortSpokenScripts.map((script) => splitSpokenText(script))
+      const chunkOffsets = shortSpeechChunks.reduce<number[]>((offsets, chunks) => [...offsets, offsets[offsets.length - 1] + chunks.length], [0])
       const narrationBlobs = await generateNarrationAudio(
-        shortSourceScenes.map((scene, index) => ({ ...scene, narration: shortSpokenScripts[index] })),
+        shortSpeechChunks.flat().map((narration) => ({ narration })),
         (phase, progress) => {
           if (phase === 'model') setStatus(`Preparing Cloudy's voice model ${Math.round(progress * 100)}%...`)
           if (phase === 'scene') {
@@ -1793,7 +1877,14 @@ function App() {
         },
         abortController.signal,
       )
-      narrationBuffers = await Promise.all(narrationBlobs.map(async (blob) => audioContext.decodeAudioData(await blob.arrayBuffer())))
+      const chunkBuffers = await Promise.all(narrationBlobs.map(async (blob, index) => {
+        try {
+          return await audioContext.decodeAudioData(await blob.arrayBuffer())
+        } catch (error) {
+          throw new Error(`Cloudy audio fragment ${index + 1} could not be decoded: ${error instanceof Error ? error.message : 'unknown error'}`)
+        }
+      }))
+      narrationBuffers = shortSpeechChunks.map((_chunks, index) => concatenateAudioBuffers(audioContext, chunkBuffers.slice(chunkOffsets[index], chunkOffsets[index + 1])))
     } catch (error) {
       await audioContext.close()
       shortRenderAbortControllerRef.current = null
@@ -2593,7 +2684,7 @@ function App() {
                 )}
                 <label className="playback-speed" htmlFor="short-speed">
                   Speed
-                  <select id="short-speed" value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as (typeof PLAYBACK_SPEED_OPTIONS)[number])} disabled={isShortPreviewPlaying}>
+                  <select id="short-speed" value={playbackSpeed} onChange={(event) => setPlaybackSpeed(Number(event.target.value) as (typeof PLAYBACK_SPEED_OPTIONS)[number])} disabled={isShortPreviewPlaying || isRenderingShort}>
                     {PLAYBACK_SPEED_OPTIONS.map((speed) => <option key={speed} value={speed}>{speedLabel(speed)}</option>)}
                   </select>
                 </label>

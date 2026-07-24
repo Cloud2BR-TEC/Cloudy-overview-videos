@@ -17,6 +17,7 @@ self.addEventListener('message', async (event: MessageEvent<NarrationRequest>) =
           if (total > 0) self.postMessage({ type: 'model', progress: loaded / total })
         },
       )
+      if (!(audio instanceof Blob)) throw new Error(`Narration fragment ${index + 1} did not return audio.`)
       self.postMessage({ type: 'audio', index, audio })
     }
     self.postMessage({ type: 'complete' })

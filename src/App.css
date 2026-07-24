@@ -312,3 +312,6 @@
 	.short-beat-button { grid-template-columns: 30px minmax(0, 1fr); }
 	.shorts-beats strong { margin-top: 0; }
 }
+
+.status { color: #3d4a44; }
+.primary-button:focus-visible, .secondary-button:focus-visible, .account-button:focus-visible, .brand-button:focus-visible, .studio-mode-tabs button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #f5a975; outline-offset: 2px; }
