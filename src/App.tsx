@@ -1401,6 +1401,9 @@ function App() {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>(loadProjects())
   const [projectName, setProjectName] = useState('')
   const [customTemplates, setCustomTemplates] = useState<CustomTemplateDefinition[]>([])
+  const [batchUrls, setBatchUrls] = useState<string>('')
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false)
   const shortRenderAbortRef = useRef(false)
   const shortRenderAbortControllerRef = useRef<AbortController | null>(null)
   const shortPreviewRunIdRef = useRef(0)
@@ -1577,6 +1580,67 @@ function App() {
       setCustomTemplates([])
       setStatus('Custom templates cleared.')
     }
+  }
+  
+  async function startBatchProcessing() {
+    const urls = batchUrls
+      .split('\n')
+      .map((url) => url.trim())
+      .filter(Boolean)
+    
+    if (urls.length === 0) {
+      alert('Please enter at least one repository URL.')
+      return
+    }
+    
+    if (urls.length > 10) {
+      alert('Batch processing is limited to 10 repositories at a time to avoid rate limits.')
+      return
+    }
+    
+    setBatchProgress({ current: 0, total: urls.length })
+    setIsBatchProcessing(true)
+    
+    for (let i = 0; i < urls.length; i++) {
+      if (!isBatchProcessing) break // Allow cancellation
+      setBatchProgress({ current: i + 1, total: urls.length })
+      setStatus(`Batch processing ${i + 1} of ${urls.length}: Loading ${urls[i]}`)
+      try {
+        await loadRepository(urls[i])
+        // Auto-save each loaded repository as a project
+        const parsed = parseRepositoryUrl(urls[i])
+        if (parsed && repository) {
+          const autoName = `${parsed.owner}-${parsed.repo}-${Date.now()}`
+          saveProject({
+            name: autoName,
+            repositoryUrl: urls[i],
+            settings,
+            scenes,
+            repository,
+            topic: scenes[0]?.title || '',
+            playbackSpeed,
+            mode: studioMode,
+          })
+        }
+        // Wait a bit between requests to avoid rate limits
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      } catch (error) {
+        console.error(`Failed to process ${urls[i]}:`, error)
+        setStatus(`Batch error on ${i + 1}/${urls.length}: ${error instanceof Error ? error.message : 'Unknown error'}. Continuing...`)
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+      }
+    }
+    
+    setIsBatchProcessing(false)
+    setBatchProgress({ current: 0, total: 0 })
+    setSavedProjects(loadProjects())
+    setStatus(`Batch processing complete: ${urls.length} repositories processed and saved as projects.`)
+  }
+  
+  function cancelBatchProcessing() {
+    setIsBatchProcessing(false)
+    setBatchProgress({ current: 0, total: 0 })
+    setStatus('Batch processing cancelled.')
   }
   
   useLayoutEffect(() => {
@@ -3607,6 +3671,48 @@ function App() {
                     Reset to Defaults
                   </button>
                 </div>
+              </div>
+            </details>
+          </section>
+          <section className="projects-panel" aria-label="Batch processing">
+            <details>
+              <summary><strong>📦 Batch Processing</strong></summary>
+              <div className="projects-controls">
+                <p style={{ fontSize: '0.9em', color: '#666' }}>
+                  Process multiple repositories at once. Enter one URL per line (max 10).
+                </p>
+                <div className="project-name-input">
+                  <label htmlFor="batch-urls">Repository URLs (one per line)</label>
+                  <textarea
+                    id="batch-urls"
+                    value={batchUrls}
+                    onChange={(event) => setBatchUrls(event.target.value)}
+                    placeholder="https://github.com/owner/repo1&#10;https://github.com/owner/repo2&#10;https://github.com/owner/repo3"
+                    disabled={isLoading || isRenderingVideo || isBatchProcessing}
+                    style={{ minHeight: '100px', width: '100%', padding: '8px', fontFamily: 'monospace', fontSize: '0.9em' }}
+                  />
+                </div>
+                {isBatchProcessing && (
+                  <div style={{ padding: '10px', background: '#f0f0f0', borderRadius: '4px' }}>
+                    <p><strong>Processing: {batchProgress.current} of {batchProgress.total}</strong></p>
+                    <progress value={batchProgress.current} max={batchProgress.total} style={{ width: '100%', height: '20px' }} />
+                  </div>
+                )}
+                <div className="project-actions">
+                  {!isBatchProcessing ? (
+                    <button type="button" onClick={startBatchProcessing} disabled={isLoading || isRenderingVideo || !batchUrls.trim()}>
+                      ▶️ Start Batch Processing
+                    </button>
+                  ) : (
+                    <button type="button" onClick={cancelBatchProcessing}>
+                      ⏹️ Cancel Batch
+                    </button>
+                  )}
+                </div>
+                <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px' }}>
+                  Each repository will be loaded, processed, and automatically saved as a project.
+                  Processing includes a 2-second delay between repositories to avoid GitHub rate limits.
+                </p>
               </div>
             </details>
           </section>
