@@ -1570,6 +1570,9 @@ function App() {
   const [videoPreviewSceneIdx, setVideoPreviewSceneIdx] = useState(0)
   const [pausedVideoPreviewIndex, setPausedVideoPreviewIndex] = useState<number | null>(null)
   const [playbackSpeed, setPlaybackSpeed] = useState<(typeof PLAYBACK_SPEED_OPTIONS)[number]>(1)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [loopPresentation, setLoopPresentation] = useState(false)
+  const [presentationStartTime, setPresentationStartTime] = useState<number | null>(null)
   const [shortTopicId, setShortTopicId] = useState(1)
   const [isShortPreviewPlaying, setIsShortPreviewPlaying] = useState(false)
   const [shortPreviewBeatIdx, setShortPreviewBeatIdx] = useState(0)
@@ -2538,6 +2541,7 @@ function App() {
     videoPreviewAbortRef.current = false
     setIsVideoPreviewPlaying(true)
     setPausedVideoPreviewIndex(null)
+    setPresentationStartTime(Date.now())
     videoPreviewSceneIdxRef.current = startIndex
     setVideoPreviewSceneIdx(startIndex)
     const voice = await resolveVoice()
@@ -2576,9 +2580,47 @@ function App() {
     window.speechSynthesis.cancel()
     setIsSpeaking(false)
     setIsVideoPreviewPlaying(false)
+    setPresentationStartTime(null)
     if (!videoPreviewAbortRef.current) {
       videoPreviewSceneIdxRef.current = 0
       setVideoPreviewSceneIdx(0)
+      // Loop if enabled
+      if (loopPresentation && !videoPreviewAbortRef.current) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1000))
+        if (!videoPreviewAbortRef.current) {
+          void startVideoPreview(0)
+        }
+      }
+    }
+  }
+
+  function skipToNextSlide() {
+    if (!isVideoPreviewPlaying || videoPreviewSceneIdx >= scenes.length - 1) return
+    window.speechSynthesis.cancel()
+    videoPreviewSceneIdxRef.current = videoPreviewSceneIdx + 1
+    setVideoPreviewSceneIdx(videoPreviewSceneIdx + 1)
+  }
+
+  function skipToPreviousSlide() {
+    if (!isVideoPreviewPlaying || videoPreviewSceneIdx <= 0) return
+    window.speechSynthesis.cancel()
+    videoPreviewSceneIdxRef.current = videoPreviewSceneIdx - 1
+    setVideoPreviewSceneIdx(videoPreviewSceneIdx - 1)
+  }
+
+  function toggleFullscreen() {
+    const element = document.querySelector('.slide-stage')
+    if (!element) return
+    if (!isFullscreen) {
+      if (element.requestFullscreen) {
+        element.requestFullscreen().catch(() => setStatus('Fullscreen not supported in this browser'))
+      }
+      setIsFullscreen(true)
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      }
+      setIsFullscreen(false)
     }
   }
 
@@ -4073,12 +4115,35 @@ function App() {
                     <div>
                       <p className="eyebrow">Live presentation</p>
                       <strong>{isVideoPreviewPlaying ? `Presenting section ${videoPreviewSceneIdx + 1} of ${scenes.length}` : 'Review and edit the selected section'}</strong>
+                      {isVideoPreviewPlaying && presentationStartTime && (() => {
+                        const elapsed = Math.floor((Date.now() - presentationStartTime) / 1000)
+                        const totalEstimated = Math.floor(effectiveTotalDuration)
+                        const remaining = totalEstimated - elapsed
+                        return (
+                          <div style={{ fontSize: '0.85em', marginTop: '4px', color: '#666' }}>
+                            ⏱ {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')} elapsed · {Math.floor(remaining / 60)}:{(remaining % 60).toString().padStart(2, '0')} remaining
+                          </div>
+                        )
+                      })()}
+                      {!isVideoPreviewPlaying && (
+                        <div style={{ fontSize: '0.75em', marginTop: '4px', color: '#999' }}>
+                          <strong>⌨️ Shortcuts:</strong> Space=Play/Pause · ←→=Navigate · F=Fullscreen · Esc=Exit
+                        </div>
+                      )}
                     </div>
                     <div className="presentation-actions">
                       {isVideoPreviewPlaying ? (
-                        <button className="primary-button" type="button" onClick={pauseVideoPreview}>
-                          Pause
-                        </button>
+                        <>
+                          <button className="secondary-button" type="button" onClick={skipToPreviousSlide} disabled={videoPreviewSceneIdx === 0} title="Previous slide (←)">
+                            ◀ Prev
+                          </button>
+                          <button className="primary-button" type="button" onClick={pauseVideoPreview} title="Pause (Space)">
+                            ⏸ Pause
+                          </button>
+                          <button className="secondary-button" type="button" onClick={skipToNextSlide} disabled={videoPreviewSceneIdx >= scenes.length - 1} title="Next slide (→)">
+                            Next ▶
+                          </button>
+                        </>
                       ) : (
                         <>
                           {isSpeaking ? (
@@ -4106,8 +4171,49 @@ function App() {
                           {PLAYBACK_SPEED_OPTIONS.map((speed) => <option key={speed} value={speed}>{speedLabel(speed)}</option>)}
                         </select>
                       </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9em', cursor: 'pointer' }} title="Loop presentation when it ends">
+                        <input
+                          type="checkbox"
+                          checked={loopPresentation}
+                          onChange={(e) => setLoopPresentation(e.target.checked)}
+                          disabled={isVideoPreviewPlaying || isSpeaking}
+                        />
+                        Loop
+                      </label>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={toggleFullscreen}
+                        disabled={isVideoPreviewPlaying || isSpeaking}
+                        title="Fullscreen mode (F)"
+                        style={{ padding: '6px 12px' }}
+                      >
+                        {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen'}
+                      </button>
                     </div>
                   </div>
+                  {isVideoPreviewPlaying && (
+                    <div style={{ padding: '8px 0', background: '#f0f0f0', borderRadius: '4px', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 15px' }}>
+                        <span style={{ fontSize: '0.85em', fontWeight: 'bold', minWidth: '45px' }}>
+                          {Math.round((videoPreviewSceneIdx / scenes.length) * 100)}%
+                        </span>
+                        <div style={{ flex: 1, height: '8px', background: '#ddd', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${(videoPreviewSceneIdx / scenes.length) * 100}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, #4caf50, #2196f3)',
+                              transition: 'width 0.3s ease'
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '0.85em', color: '#666', minWidth: '70px', textAlign: 'right' }}>
+                          {videoPreviewSceneIdx + 1} / {scenes.length}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <p className="sr-only" aria-live="polite" aria-atomic="true">
                     {isVideoPreviewPlaying
                       ? `Playing slide ${videoPreviewSceneIdx + 1} of ${scenes.length}: ${presentedScene.title}. ${presentedScene.narration}`
