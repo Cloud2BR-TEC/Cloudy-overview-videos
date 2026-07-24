@@ -99,6 +99,74 @@ const SHORT_TEMPLATE_KEYWORDS: { key: string; pattern: RegExp }[] = [
 // Candidate body templates (hero/intro/recap/outro are reserved for opening and closing beats).
 const SHORT_TEMPLATE_ROTATION = ['presenting', 'whiteboard', 'diagram', 'timeline', 'steps', 'stats', 'gallery', 'comparison', 'checklist', 'roadmap', 'code', 'terminal', 'quote', 'question', 'callout']
 
+// Custom template system: JSON-defined templates for extensibility
+type CustomTemplateDefinition = {
+  key: string
+  name: string
+  svgUrl: string
+  layout: {
+    title: [number, number, number, number]
+    items: Array<[number, number, number, number]>
+    media?: Array<[number, number, number, number]>
+    format?: 'caption' | 'code' | 'metric' | 'sequence' | 'statement'
+    titleColor: string
+    contentColor: string
+    align?: 'left' | 'center'
+    mono?: boolean
+    dark?: boolean
+    contentPlate?: boolean
+    noTitlePlate?: boolean
+  }
+  keywords?: string[]
+}
+
+function validateCustomTemplate(data: unknown): data is CustomTemplateDefinition {
+  if (typeof data !== 'object' || data === null) return false
+  const template = data as CustomTemplateDefinition
+  if (typeof template.key !== 'string' || template.key.length === 0) return false
+  if (typeof template.name !== 'string') return false
+  if (typeof template.svgUrl !== 'string' || !template.svgUrl.match(/^https?:\/\/.+\.svg$/i)) return false
+  if (!template.layout || typeof template.layout !== 'object') return false
+  if (!Array.isArray(template.layout.title) || template.layout.title.length !== 4) return false
+  if (!Array.isArray(template.layout.items) || template.layout.items.length === 0) return false
+  if (typeof template.layout.titleColor !== 'string') return false
+  if (typeof template.layout.contentColor !== 'string') return false
+  return true
+}
+
+function loadCustomTemplatesFromJson(json: string): CustomTemplateDefinition[] {
+  try {
+    const parsed = JSON.parse(json)
+    const templates = Array.isArray(parsed) ? parsed : [parsed]
+    return templates.filter(validateCustomTemplate)
+  } catch (error) {
+    console.error('Failed to parse custom templates JSON:', error)
+    return []
+  }
+}
+
+// Reserved for future full integration when template system is refactored
+/*
+function customTemplateToLayout(template: CustomTemplateDefinition): ShortTemplateLayout {
+  return {
+    title: template.layout.title as ShortRect,
+    items: template.layout.items as readonly ShortRect[],
+    media: template.layout.media as readonly ShortRect[] | undefined,
+    format: template.layout.format,
+    titleColor: template.layout.titleColor,
+    contentColor: template.layout.contentColor,
+    align: template.layout.align,
+    mono: template.layout.mono,
+    dark: template.layout.dark,
+    contentPlate: template.layout.contentPlate,
+    noTitlePlate: template.layout.noTitlePlate,
+  }
+}
+*/
+
+// Note: Custom templates foundation is in place. Full integration requires refactoring
+// template selection functions to accept dynamic template sets as parameters.
+
 function shortSlideDuration(playbackSpeed: number) {
   return SHORT_SLIDE_SECONDS / playbackSpeed
 }
@@ -1269,6 +1337,7 @@ function App() {
   const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_SETTINGS)
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>(loadProjects())
   const [projectName, setProjectName] = useState('')
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplateDefinition[]>([])
   const shortRenderAbortRef = useRef(false)
   const shortRenderAbortControllerRef = useRef<AbortController | null>(null)
   const shortPreviewRunIdRef = useRef(0)
@@ -1281,6 +1350,8 @@ function App() {
   const browserVoiceRef = useRef<SpeechSynthesisVoice | null | undefined>(undefined)
   const repositoryLoadAbortRef = useRef<AbortController | null>(null)
   const repositoryLoadIdRef = useRef(0)
+  // Note: Custom templates are loaded and stored, but full integration requires
+  // refactoring global template constants into parameter-based functions.
   const totalDuration = scenes.reduce((total, scene) => total + scene.duration, 0)
   const effectiveTotalDuration = scenes.reduce((total, scene) => total + effectiveSceneDuration(scene, playbackSpeed), 0)
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0]
@@ -1414,6 +1485,35 @@ function App() {
     }
     reader.readAsText(file)
     event.target.value = '' // Reset file input
+  }
+  
+  function importCustomTemplatesFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const json = e.target?.result as string
+      const templates = loadCustomTemplatesFromJson(json)
+      if (templates.length > 0) {
+        setCustomTemplates((prev) => {
+          const existing = new Set(prev.map((t) => t.key))
+          const newTemplates = templates.filter((t) => !existing.has(t.key))
+          return [...prev, ...newTemplates]
+        })
+        setStatus(`Loaded ${templates.length} custom template${templates.length === 1 ? '' : 's'}.`)
+      } else {
+        alert('No valid templates found in the file.')
+      }
+    }
+    reader.readAsText(file)
+    event.target.value = '' // Reset file input
+  }
+  
+  function clearCustomTemplates() {
+    if (confirm(`Clear all ${customTemplates.length} custom template${customTemplates.length === 1 ? '' : 's'}?`)) {
+      setCustomTemplates([])
+      setStatus('Custom templates cleared.')
+    }
   }
   
   useLayoutEffect(() => {
@@ -3271,6 +3371,40 @@ function App() {
                               Delete
                             </button>
                           </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </details>
+          </section>
+          <section className="projects-panel" aria-label="Template management">
+            <details>
+              <summary><strong>🎨 Custom Templates ({customTemplates.length})</strong></summary>
+              <div className="projects-controls">
+                <p style={{ fontSize: '0.9em', color: '#666' }}>
+                  Load JSON-defined custom templates to extend the built-in template library.
+                </p>
+                <div className="project-actions">
+                  <label className="import-button">
+                    📥 Load Templates JSON
+                    <input type="file" accept=".json" onChange={importCustomTemplatesFile} style={{ display: 'none' }} />
+                  </label>
+                  {customTemplates.length > 0 && (
+                    <button type="button" onClick={clearCustomTemplates} disabled={isLoading || isRenderingVideo}>
+                      🗑️ Clear All
+                    </button>
+                  )}
+                </div>
+                {customTemplates.length > 0 && (
+                  <div className="saved-projects-list">
+                    <p><strong>Loaded Templates</strong></p>
+                    <ul>
+                      {customTemplates.map((template) => (
+                        <li key={template.key}>
+                          <span>{template.name}</span>
+                          <small>{template.key}</small>
                         </li>
                       ))}
                     </ul>
