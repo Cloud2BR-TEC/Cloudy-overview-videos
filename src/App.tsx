@@ -1106,7 +1106,13 @@ function isEnglishImagePath(value: string) {
   return !localeSuffix || englishLocale.test(localeSuffix) || !nonEnglishLocale.test(localeSuffix)
 }
 function isEnglishDocumentationPath(value: string) {
-  return /^docs\//i.test(value) && /\.mdx?$/i.test(value) && isEnglishImagePath(value) && !isExcludedRepositoryPath(value)
+  const normalized = decodeURIComponent(value).toLowerCase()
+  return (
+    /\.mdx?$/.test(normalized) &&
+    !/(^|\/)(readme(?:\.[^.]+)?|node_modules|vendor|dist|build|coverage)(\/|$)/.test(normalized) &&
+    isEnglishImagePath(value) &&
+    !isExcludedRepositoryPath(value)
+  )
 }
 function documentationLanguagePriority(path: string) {
   const normalized = decodeURIComponent(path).toLowerCase()
@@ -1453,7 +1459,7 @@ function buildScenes(repo: Repository, settings: GenerationSettings = DEFAULT_SE
     }
     result.push(scene)
   }
-  if (result.length < Math.ceil(settings.maxScenes * 0.6)) throw new Error(`Cloudy found ${result.length} distinct material passages, but at least ${Math.ceil(settings.maxScenes * 0.6)} are required. Add more substantive README or English docs content and try again.`)
+  if (result.length < Math.ceil(settings.maxScenes * 0.5)) throw new Error(`Cloudy found ${result.length} distinct material passages, but at least ${Math.ceil(settings.maxScenes * 0.5)} are required. Add more substantive English documentation and try again.`)
   return result
 }
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, zoom: number) {
@@ -1915,16 +1921,11 @@ function App() {
         size: number
       }
       if (!data.default_branch) throw new Error('This repository has no default branch. It may be empty or newly created. Add a README and some documentation, then try again.')
-      // Repository quality validation
-      if (!readmeResponse.ok || data.size === 0) {
-        throw new Error('This repository has no README. Cloudy requires a README with substantive content to generate explainer videos. Add a README with at least 500 words and try again.')
+      if (data.size === 0) {
+        throw new Error('This repository is empty. Add source files or documentation before generating a video.')
       }
       const readmeData = readmeResponse.ok ? ((await readmeResponse.json()) as { content?: string }) : null
       const readmeText = readmeData?.content ? decodeBase64(readmeData.content) : ''
-      const readmeWordCount = readmeText.split(/\s+/).filter(Boolean).length
-      if (readmeWordCount < 300) {
-        throw new Error(`This README is too short (${readmeWordCount} words). Cloudy needs at least 300 words of documentation to create meaningful explainer content. Expand your README with more detail about what the project does, how to use it, and what problems it solves.`)
-      }
       setStatus('Repository validated. Reading documentation and extracting visuals.')
       const readmeImages = readmeText ? extractReadmeImageUrls(readmeText, parsed.owner, parsed.repo, data.default_branch) : []
       const treeResponse = await fetchWithRetry(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(data.default_branch)}?recursive=1`, { headers: apiHeaders, signal: loadController.signal })
@@ -1966,7 +1967,6 @@ function App() {
         })
       const documentation = documentationTexts.filter(Boolean).join('\n\n')
       const documentationFileCount = documentationTexts.filter(Boolean).length
-      const storyboardSource = documentation || readmeText
       const repositoryImages = treeEntries
         .filter(
           (entry) =>
@@ -1989,7 +1989,7 @@ function App() {
         license: data.license?.spdx_id ?? 'No license detected',
         stars: data.stargazers_count,
         openIssues: data.open_issues_count,
-        readme: storyboardSource,
+        readme: readmeText,
         documentation,
         assets,
       }
@@ -2004,10 +2004,10 @@ function App() {
         const message = error instanceof Error ? error.message : 'Unknown error'
         if (message.includes('distinct material passages')) {
           const currentCount = message.match(/\d+/)?.[0] || '0'
-          const requiredCount = Math.ceil(settings.maxScenes * 0.6)
+          const requiredCount = Math.ceil(settings.maxScenes * 0.5)
           throw new Error(`Not enough unique content found (${currentCount} passages found, ${requiredCount} required). Suggestions: 
-1. Add more detailed sections to your README
-2. Include documentation files in a docs/ folder
+1. Add substantive documentation files in a docs/ folder
+2. Expand any existing guides, tutorials, or README content
 3. Add examples, tutorials, or usage guides
 4. Explain features, architecture, and implementation details
 5. Try reducing maxScenes setting if content is intentionally concise`)
@@ -2041,7 +2041,11 @@ function App() {
       }
       const matchedImageCount = generatedScenes.filter((scene) => scene.asset).length
       const imageNote = assets.length ? `${matchedImageCount} slide${matchedImageCount === 1 ? '' : 's'} received a verified topic-matched image; unmatched slides use the material-focused placeholder.` : 'No English or default-language images found — Cloudy will present with a branded placeholder.'
-      const documentationNote = documentationFileCount ? `Grounded in the main README and ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}.` : 'No English docs/ Markdown files were loaded; using the main README and repository structure.'
+      const documentationNote = documentationFileCount
+        ? `Grounded in ${documentationFileCount} English documentation file${documentationFileCount === 1 ? '' : 's'}${readmeText ? ' plus the main README' : ''}.`
+        : readmeText
+          ? 'No additional English documentation files were loaded; using the main README.'
+          : 'No README or eligible English documentation files were loaded.'
       const warningNote = warnings.length > 0 ? ` Suggestions: ${warnings.join(' ')}` : ''
       setStatus(`Storyboard ready: ${generatedScenes.length} unique slides, ${settings.slidesPerSection} per section, ${durationLabel(generatedScenes.reduce((total, scene) => total + scene.duration, 0))} total. ${documentationNote} ${imageNote}${warningNote}`)
       if (studioMode === 'overview') setActiveWorkflow('story')
