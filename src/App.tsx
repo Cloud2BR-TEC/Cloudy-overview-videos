@@ -95,29 +95,69 @@ const SHORT_TEMPLATE_KEYWORDS: { key: string; pattern: RegExp }[] = [
   { key: 'presenting', pattern: /\b(feature|overview|introduction|introduce|present|demo|capability|highlight|showcase)\b/i },
 ]
 
-// Rotation used when no keyword matches so slides still vary and the whole library gets leveraged.
+// Candidate body templates (hero/intro/recap/outro are reserved for opening and closing beats).
 const SHORT_TEMPLATE_ROTATION = ['presenting', 'whiteboard', 'diagram', 'timeline', 'steps', 'stats', 'gallery', 'comparison', 'checklist', 'roadmap', 'code', 'terminal', 'quote', 'question', 'callout']
 
 function shortSlideDuration(playbackSpeed: number) {
   return SHORT_SLIDE_SECONDS / playbackSpeed
 }
 
-// Choose the best-fitting template key for a slide given its position and text.
-function pickShortTemplateKey(text: string, index: number, total: number, usedKeys: Set<string>) {
-  if (index === 0) return 'hero'
-  if (total > 1 && index === total - 1) return 'outro'
-  for (const { key, pattern } of SHORT_TEMPLATE_KEYWORDS) {
-    if (pattern.test(text) && !usedKeys.has(key)) return key
-  }
-  const available = SHORT_TEMPLATE_ROTATION.filter((key) => !usedKeys.has(key))
-  return available[index % available.length] ?? SHORT_TEMPLATE_ROTATION[index % SHORT_TEMPLATE_ROTATION.length]
+// How many text and media slots a template exposes — the basis for matching a template to content volume.
+function shortTemplateCapacity(key: string) {
+  const layout = SHORT_TEMPLATE_LAYOUTS[key]
+  return { items: layout?.items.length ?? 0, media: layout?.media?.length ?? 0 }
 }
 
-// Build the per-slide template index list (content-aware, avoids repeats) for a set of short scenes.
-function planShortTemplateIndices(slides: { title: string; narration: string }[]) {
+// Score how well a template fits a slide: keyword relevance + how closely its slot count matches the
+// amount of information available, so busy slides get grid templates and sparse slides get big-statement ones.
+function scoreShortTemplate(key: string, text: string, pointCount: number, mediaCount: number) {
+  const { items, media } = shortTemplateCapacity(key)
+  let score = 0
+  const keyword = SHORT_TEMPLATE_KEYWORDS.find((entry) => entry.key === key)
+  if (keyword?.pattern.test(text)) score += 6
+  if (media > 0) {
+    // Image-led templates only make sense when the repository actually provides enough visuals.
+    if (mediaCount >= media) score += 6
+    else if (mediaCount >= 1) score += 1
+    else score -= 8
+  } else if (items > 0) {
+    const filled = Math.min(items, pointCount)
+    const emptySlots = Math.max(0, items - pointCount)
+    const overflow = Math.max(0, pointCount - items)
+    // Reward filled slots, penalise leaving slots empty, and gently penalise dropping extra points.
+    score += filled * 1.6 - emptySlots * 1.4 - overflow * 0.3
+    if (pointCount <= 1 && items === 1) score += 4 // single strong statement
+    if (pointCount >= 4 && items >= 4) score += 2 // dense grid for dense content
+  }
+  return score
+}
+
+// Choose the best-fitting template for a slide from its content volume, media, keywords, and position.
+function pickShortTemplateKey(text: string, pointCount: number, mediaCount: number, index: number, total: number, usedKeys: Set<string>) {
+  if (index === 0) return 'hero'
+  if (total > 1 && index === total - 1) return 'outro'
+  const available = SHORT_TEMPLATE_ROTATION.filter((key) => !usedKeys.has(key))
+  const pool = available.length ? available : SHORT_TEMPLATE_ROTATION
+  let bestKey = pool[0]
+  let bestScore = -Infinity
+  pool.forEach((key, poolIndex) => {
+    // Tiny position-based tiebreaker keeps variety when several templates score equally.
+    const score = scoreShortTemplate(key, text, pointCount, mediaCount) - ((poolIndex + index) % pool.length) * 0.05
+    if (score > bestScore) {
+      bestScore = score
+      bestKey = key
+    }
+  })
+  return bestKey
+}
+
+// Build the per-slide template index list, matching each template to the slide's information volume.
+function planShortTemplateIndices(slides: Scene[], repository: Repository | null) {
   const usedKeys = new Set<string>()
   return slides.map((slide, index) => {
-    const key = pickShortTemplateKey(`${slide.title} ${slide.narration}`, index, slides.length, usedKeys)
+    const pointCount = shortContentPool(slide, repository).length
+    const mediaCount = slide.assets.length || (slide.asset ? 1 : 0)
+    const key = pickShortTemplateKey(`${slide.title} ${slide.narration}`, pointCount, mediaCount, index, slides.length, usedKeys)
     usedKeys.add(key)
     return SHORT_TEMPLATE_INDEX[key] ?? 0
   })
@@ -994,7 +1034,7 @@ function App() {
   const shortFollowingScenes = scenes.slice(Math.max(0, shortTopicIndex) + 1, Math.max(0, shortTopicIndex) + 5)
   const shortLeadingScenes = scenes.slice(Math.max(0, shortTopicIndex - Math.max(0, 4 - shortFollowingScenes.length)), Math.max(0, shortTopicIndex))
   const shortSourceScenes = [shortTopic, ...shortFollowingScenes, ...shortLeadingScenes]
-  const shortTemplateIndices = planShortTemplateIndices(shortSourceScenes)
+  const shortTemplateIndices = planShortTemplateIndices(shortSourceScenes, repository)
   const shortSpokenScripts = shortSourceScenes.map((scene, index) => {
     const template = SHORT_TEMPLATES[shortTemplateIndices[index] ?? 0] ?? SHORT_TEMPLATES[0]
     return shortSpokenText(scene, SHORT_TEMPLATE_LAYOUTS[template.key], repository)
@@ -1928,7 +1968,7 @@ function App() {
     const sceneDurations = narrationBuffers.map((buffer) => Math.max(shortSlideDuration(playbackSpeed), buffer.duration / narrationRate + 0.35))
     const totalSeconds = sceneDurations.reduce((total, duration) => total + duration, 0)
     // Content-aware template per slide; each remains until its complete narration finishes.
-    const slideTemplateIndices = planShortTemplateIndices(shortSourceScenes)
+    const slideTemplateIndices = planShortTemplateIndices(shortSourceScenes, repository)
     const startedAt = performance.now()
     setShortRenderProgress(30)
     setStatus('Rendering your Cloudy Short film. Keep this tab active.')
