@@ -35,6 +35,7 @@ type ShortTemplateLayout = {
   title: ShortRect
   items: readonly ShortRect[]
   media?: readonly ShortRect[]
+  format?: 'caption' | 'code' | 'metric' | 'sequence' | 'statement'
   titleColor: string
   contentColor: string
   align?: 'left' | 'center'
@@ -51,21 +52,21 @@ const SHORT_CLOUDY_RECT: ShortRect = [170, 315, 340, 320]
 const LEFT_TITLE: ShortRect = [80, 120, 505, 175]
 
 const SHORT_TEMPLATE_LAYOUTS: Record<string, ShortTemplateLayout> = {
-  hero: { title: [660, 300, 1120, 210], items: [[660, 560, 1060, 150]], titleColor: '#ffffff', contentColor: '#cceee8', align: 'center', dark: true, contentPlate: true, noTitlePlate: true },
-  intro: { title: [640, 150, 1165, 90], items: [[640, 285, 570, 92], [1235, 285, 570, 92], [640, 405, 570, 92], [1235, 405, 570, 92], [690, 630, 1050, 60]], titleColor: '#153f39', contentColor: '#244b45' },
+  hero: { title: [660, 300, 1120, 210], items: [[660, 560, 1060, 150]], format: 'statement', titleColor: '#ffffff', contentColor: '#cceee8', align: 'center', dark: true, contentPlate: true, noTitlePlate: true },
+  intro: { title: [640, 150, 1165, 90], items: [[640, 285, 570, 92], [1235, 285, 570, 92], [640, 405, 570, 92], [1235, 405, 570, 92], [690, 630, 1050, 60]], format: 'caption', titleColor: '#153f39', contentColor: '#244b45' },
   presenting: { title: LEFT_TITLE, items: [[808, 165, 710, 54], [808, 255, 900, 210]], media: [[760, 120, 1020, 600]], titleColor: '#17384b', contentColor: '#17384b', contentPlate: true },
   whiteboard: { title: LEFT_TITLE, items: [[690, 300, 215, 105], [1100, 300, 180, 105], [1450, 300, 270, 105], [690, 540, 370, 100], [1320, 540, 400, 100]], titleColor: '#203946', contentColor: '#17384b', align: 'center' },
   diagram: { title: LEFT_TITLE, items: [[620, 215, 210, 130], [620, 545, 210, 130], [1120, 360, 330, 175]], titleColor: '#173c30', contentColor: '#173c30', align: 'center' },
-  timeline: { title: LEFT_TITLE, items: [[620, 205, 260, 150], [900, 555, 260, 150], [1240, 205, 260, 150], [1520, 555, 260, 150]], titleColor: '#f2fdff', contentColor: '#17475b', align: 'center', dark: true },
+  timeline: { title: LEFT_TITLE, items: [[620, 205, 260, 150], [900, 555, 260, 150], [1240, 205, 260, 150], [1520, 555, 260, 150]], format: 'sequence', titleColor: '#f2fdff', contentColor: '#17475b', align: 'center', dark: true },
   comparison: { title: LEFT_TITLE, items: [[665, 225, 470, 440], [1265, 225, 470, 440]], titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
   quote: { title: LEFT_TITLE, items: [[700, 260, 1020, 360]], titleColor: '#eef5f2', contentColor: '#263f3d', align: 'center', dark: true },
-  stats: { title: LEFT_TITLE, items: [[640, 210, 500, 180], [1200, 210, 500, 180], [640, 500, 500, 180], [1200, 500, 500, 180]], titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
-  code: { title: LEFT_TITLE, items: [[725, 215, 940, 66], [725, 290, 940, 66], [725, 365, 940, 66], [725, 440, 940, 66], [725, 515, 940, 66]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
-  terminal: { title: LEFT_TITLE, items: [[700, 215, 960, 66], [700, 290, 960, 66], [700, 365, 960, 66], [700, 440, 960, 66], [700, 515, 960, 66]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
-  steps: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], titleColor: '#592a1d', contentColor: '#74341f' },
+  stats: { title: LEFT_TITLE, items: [[640, 210, 500, 180], [1200, 210, 500, 180], [640, 500, 500, 180], [1200, 500, 500, 180]], format: 'metric', titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
+  code: { title: LEFT_TITLE, items: [[725, 215, 940, 66], [725, 290, 940, 66], [725, 365, 940, 66], [725, 440, 940, 66], [725, 515, 940, 66]], format: 'code', titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
+  terminal: { title: LEFT_TITLE, items: [[700, 215, 960, 66], [700, 290, 960, 66], [700, 365, 960, 66], [700, 440, 960, 66], [700, 515, 960, 66]], format: 'code', titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
+  steps: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], format: 'sequence', titleColor: '#592a1d', contentColor: '#74341f' },
   question: { title: LEFT_TITLE, items: [[820, 320, 900, 300]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
-  checklist: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], titleColor: '#17384b', contentColor: '#17384b' },
-  gallery: { title: LEFT_TITLE, items: [[780, 350, 450, 46], [1310, 350, 450, 46], [780, 640, 450, 46], [1310, 640, 450, 46]], media: [[760, 160, 490, 176], [1290, 160, 490, 176], [760, 450, 490, 176], [1290, 450, 490, 176]], titleColor: '#24445a', contentColor: '#24445a', align: 'center', contentPlate: true },
+  checklist: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], format: 'sequence', titleColor: '#17384b', contentColor: '#17384b' },
+  gallery: { title: LEFT_TITLE, items: [[780, 350, 450, 46], [1310, 350, 450, 46], [780, 640, 450, 46], [1310, 640, 450, 46]], media: [[760, 160, 490, 176], [1290, 160, 490, 176], [760, 450, 490, 176], [1290, 450, 490, 176]], format: 'caption', titleColor: '#24445a', contentColor: '#24445a', align: 'center', contentPlate: true },
   callout: { title: LEFT_TITLE, items: [[700, 270, 1000, 340]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
   roadmap: { title: LEFT_TITLE, items: [[580, 560, 220, 95], [860, 300, 220, 95], [1140, 640, 220, 95], [1400, 275, 220, 95], [1620, 420, 220, 95]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
   recap: { title: [640, 150, 1150, 90], items: [[690, 285, 460, 130], [1280, 285, 460, 130], [690, 495, 460, 130], [1280, 495, 460, 130]], titleColor: '#603419', contentColor: '#603419' },
@@ -365,7 +366,7 @@ function shortNarrationForScene(scene: Scene, repository: Repository | null): st
 
 function shortSpokenText(scene: Scene, layout: ShortTemplateLayout, repository: Repository | null): string {
   const narration = shortNarrationForScene(scene, repository)
-  const parts = uniqueContentPoints([scene.title, narration, ...shortItemsForLayout(scene, layout.items.length, repository)])
+  const parts = uniqueContentPoints([scene.title, narration, ...shortItemsForLayout(scene, layout, repository)])
   return parts.join('. ').replace(/\.{2,}/g, '.')
 }
 
@@ -413,14 +414,28 @@ function concatenateAudioBuffers(audioContext: AudioContext, buffers: AudioBuffe
   return combined
 }
 
-// Fill every content slot of a template with as much dynamic repository text as fits.
-function shortItemsForLayout(scene: Scene, itemCount: number, repository: Repository | null): string[] {
+function formatShortPoint(point: string, format: ShortTemplateLayout['format'], index: number) {
+  const clean = point.replace(/^[\s>*#`\-+\d.)]+/, '').replace(/[.!?]+$/, '').trim()
+  if (format === 'caption') return limitWords(clean, 9)
+  if (format === 'code') return limitWords(clean.replace(/^run\s+/i, ''), 12)
+  if (format === 'metric') {
+    const metric = clean.match(/(?:\$|€|£)?\d[\d,.]*(?:\s?(?:%|ms|s|sec|seconds?|minutes?|hours?|kb|mb|gb|stars?|issues?|files?|steps?|modules?|users?))?/i)?.[0]
+    return metric ? `${metric} — ${limitWords(clean.replace(metric, '').replace(/^\s*[:—-]\s*/, ''), 8)}` : limitWords(clean, 10)
+  }
+  if (format === 'sequence') return `${index + 1}. ${limitWords(clean, 13)}`
+  if (format === 'statement') return limitWords(clean, 34)
+  return limitWords(clean, 22)
+}
+
+// Fill every content slot with repository evidence formatted for that template's visual grammar.
+function shortItemsForLayout(scene: Scene, layout: ShortTemplateLayout, repository: Repository | null): string[] {
+  const itemCount = layout.items.length
   if (itemCount <= 0) return []
   const narration = shortNarrationForScene(scene, repository)
   const pool = uniqueContentPoints(shortContentPool(scene, repository), [scene.title, narration])
   if (pool.length === 0) return []
   // A single large box uses only distinct supporting points, never a repeated narration passage.
-  if (itemCount === 1) return [pool.slice(0, 5).join(' ')]
+  if (itemCount === 1) return [formatShortPoint(pool.slice(0, 5).join(' '), layout.format, 0)]
   const points: string[] = []
   for (let i = 0; i < itemCount && i < pool.length; i++) points.push(pool[i])
   // Use only distinct clauses when the repository provides more unique detail for open slots.
@@ -437,7 +452,7 @@ function shortItemsForLayout(scene: Scene, itemCount: number, repository: Reposi
     )
     for (let i = 0; points.length < itemCount && i < clauses.length; i++) points.push(clauses[i])
   }
-  return points
+  return points.map((point, index) => formatShortPoint(point, layout.format, index))
 }
 
 const STARTER_NARRATIONS = [
@@ -1054,7 +1069,7 @@ function App() {
   const activeShortScene = shortSourceScenes[shortPreviewBeatIdx] ?? shortTopic
   const activeShortLayout = SHORT_TEMPLATE_LAYOUTS[activeShortTemplate.key]
   const activeShortAssets = activeShortScene.assets.length ? activeShortScene.assets.slice(0, 4) : activeShortScene.asset ? [activeShortScene.asset] : []
-  const activeShortItems = shortItemsForLayout(activeShortScene, activeShortLayout.items.length, repository)
+  const activeShortItems = shortItemsForLayout(activeShortScene, activeShortLayout, repository)
   // Auto-fit every preview text zone: shrink font until the text fits its shape (never clips/overflows).
   const shortStageRef = useRef<HTMLElement | null>(null)
   const shortBulletsKey = activeShortItems.join('|')
@@ -2368,7 +2383,7 @@ function App() {
         if (!layout.noTitlePlate) drawZonePlate(...layout.title, layout.dark)
         if (layout.contentPlate) layout.items.forEach((slot) => drawZonePlate(...slot, layout.dark))
         drawSlotText(scene.title, ...layout.title, titleSize, layout.titleColor, layout.align)
-        const slotItems = shortItemsForLayout(scene, layout.items.length, repository)
+        const slotItems = shortItemsForLayout(scene, layout, repository)
         slotItems.forEach((point, index) => {
           const slot = layout.items[index]
           if (!slot) return
