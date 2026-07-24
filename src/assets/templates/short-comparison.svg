@@ -13,6 +13,4 @@
   <text x="900" y="248" text-anchor="middle" fill="#fff" font-family="Segoe UI, sans-serif" font-size="28" font-weight="800">OPTION A</text><text x="1500" y="248" text-anchor="middle" fill="#fff" font-family="Segoe UI, sans-serif" font-size="28" font-weight="800">OPTION B</text>
   <g fill="#789083" opacity=".25"><rect x="680" y="345" width="425" height="22" rx="11"/><rect x="680" y="427" width="370" height="22" rx="11"/><rect x="680" y="509" width="400" height="22" rx="11"/><rect x="1280" y="345" width="425" height="22" rx="11"/><rect x="1280" y="427" width="370" height="22" rx="11"/><rect x="1280" y="509" width="400" height="22" rx="11"/></g>
   <circle cx="1200" cy="450" r="48" fill="#f4f6f0" stroke="#6c806f" stroke-width="3"/><text x="1200" y="462" text-anchor="middle" fill="#33483a" font-family="Segoe UI, sans-serif" font-size="30" font-weight="900">VS</text>
-  <!-- Narration band: x=80 y=850 width=1760 height=160 -->
-  <rect x="80" y="850" width="1760" height="160" rx="18" fill="#1f3327" filter="url(#comparison-shadow)"/><rect x="80" y="850" width="12" height="160" rx="6" fill="#d06b51"/><text x="130" y="907" fill="#e89a83" font-family="Segoe UI, sans-serif" font-size="20" font-weight="800" letter-spacing="3">NARRATION</text>
 </svg>

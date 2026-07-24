@@ -11,5 +11,4 @@
   <g filter="url(#hero-shadow)"><rect x="620" y="130" width="1220" height="610" rx="24" fill="#06131d" opacity="0.62"/></g>
   <rect x="680" y="190" width="126" height="8" rx="4" fill="#ffd166"/>
   <rect x="680" y="590" width="860" height="18" rx="9" fill="#b8d9da" opacity="0.32"/><rect x="680" y="632" width="650" height="18" rx="9" fill="#b8d9da" opacity="0.2"/>
-  <rect x="80" y="850" width="1760" height="160" rx="18" fill="#f5fbfb" filter="url(#hero-shadow)"/><rect x="80" y="850" width="12" height="160" rx="6" fill="#55d6c2"/><text x="130" y="907" fill="#16756f" font-family="Segoe UI, sans-serif" font-size="20" font-weight="800" letter-spacing="3">NARRATION</text>
 </svg>

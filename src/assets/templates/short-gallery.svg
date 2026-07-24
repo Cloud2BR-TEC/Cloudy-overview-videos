@@ -11,6 +11,4 @@
   <!-- Gallery inner slots: (760,160,490,250), (1290,160,490,250), (760,450,490,250), (1290,450,490,250) -->
   <rect x="760" y="160" width="490" height="250" rx="10" fill="#2a9d8f"/><rect x="1290" y="160" width="490" height="250" rx="10" fill="#264653"/><rect x="760" y="450" width="490" height="250" rx="10" fill="#e76f51"/><rect x="1290" y="450" width="490" height="250" rx="10" fill="#8f668f"/>
   <g fill="#fff" opacity=".3"><path d="M760 388L900 250l92 92 74-70 184 116v22H760Z"/><path d="M1290 388l118-116 105 88 94-110 173 138v22h-490Z"/><path d="M760 678l116-120 105 86 94-116 175 150v22H760Z"/><path d="M1290 678l146-148 95 105 80-84 169 127v22h-490Z"/></g>
-  <!-- Narration band: x=80 y=850 width=1760 height=160 -->
-  <rect x="80" y="850" width="1760" height="160" rx="18" fill="#3d2f2d" filter="url(#gallery-shadow)"/><rect x="80" y="850" width="12" height="160" rx="6" fill="#e76f51"/><text x="130" y="907" fill="#f5a88f" font-family="Segoe UI, sans-serif" font-size="20" font-weight="800" letter-spacing="3">NARRATION</text>
 </svg>

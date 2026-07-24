@@ -3,5 +3,4 @@
   <rect width="1920" height="1080" fill="url(#outro-bg)"/><circle cx="1500" cy="150" r="330" fill="#f3b95f" opacity="0.08"/><path d="M620 720C980 600 1280 780 1840 550" fill="none" stroke="#efb660" stroke-width="3" opacity="0.2"/>
   <text x="90" y="118" fill="#f3c77f" font-family="Segoe UI, sans-serif" font-size="22" font-weight="800" letter-spacing="4">CLOSING</text>
   <g text-anchor="middle"><text x="1230" y="245" fill="#f3c77f" font-family="Segoe UI, sans-serif" font-size="24" font-weight="800" letter-spacing="5">ONE LAST THOUGHT</text><rect x="890" y="420" width="680" height="16" rx="8" fill="#fff" opacity="0.22"/><rect x="990" y="458" width="480" height="16" rx="8" fill="#fff" opacity="0.14"/><g filter="url(#outro-shadow)"><rect x="1040" y="545" width="380" height="82" rx="41" fill="#f3b95f"/></g></g>
-  <rect x="80" y="850" width="1760" height="160" rx="18" fill="#fff8ef" filter="url(#outro-shadow)"/><rect x="80" y="850" width="12" height="160" rx="6" fill="#f3b95f"/><text x="130" y="907" fill="#8c4c51" font-family="Segoe UI, sans-serif" font-size="20" font-weight="800" letter-spacing="3">NARRATION</text>
 </svg>
