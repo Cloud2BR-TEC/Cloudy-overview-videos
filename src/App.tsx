@@ -116,6 +116,16 @@ function scoreShortTemplate(key: string, text: string, pointCount: number, media
   let score = 0
   const keyword = SHORT_TEMPLATE_KEYWORDS.find((entry) => entry.key === key)
   if (keyword?.pattern.test(text)) score += 6
+  // Smart detection bonus: boost steps template for tutorial content
+  if (key === 'steps' && /\b(tutorial|guide|how to|step|walkthrough|numbered)\b/i.test(text)) score += 8
+  // Smart detection bonus: boost comparison template for versus content
+  if (key === 'comparison' && /\b(compar|versus|vs\.?|difference|alternative)\b/i.test(text)) score += 8
+  // Smart detection bonus: boost stats template for metrics/benchmarks
+  if (key === 'stats' && /\b(performance|benchmark|metric|speed|\d+(?:\.\d+)?(?:%|x|ms|faster))\b/i.test(text)) score += 8
+  // Smart detection bonus: boost terminal/code templates for installation commands
+  if ((key === 'terminal' || key === 'code') && /\b(npm|yarn|pip|cargo|install|setup)\b/i.test(text)) score += 6
+  // Smart detection bonus: boost checklist for requirements/best practices
+  if (key === 'checklist' && /\b(requirement|must|need to|best practice|guideline|ensure)\b/i.test(text)) score += 6
   if (media > 0) {
     // Image-led templates only make sense when the repository actually provides enough visuals.
     if (mediaCount >= media) score += 6
@@ -442,10 +452,130 @@ function shortContentPool(scene: Scene, repository: Repository | null, settings:
       if (repository.openIssues > 0) add(`${repository.openIssues} open issues`)
       if (repository.license) add(`Licensed under ${repository.license}`)
     }
+    // Smart detection: Add installation instructions for setup/install scenes
+    if (/\b(install|setup|getting started|quick start|begin|start)\b/i.test(scene.title)) {
+      detectInstallationInstructions(repository).forEach(add)
+    }
+    // Smart detection: Add tutorial steps for guide/tutorial/how-to scenes
+    if (/\b(tutorial|guide|how to|step|walkthrough|example)\b/i.test(scene.title)) {
+      detectTutorialStructure(repository).forEach(add)
+    }
+    // Smart detection: Add comparison content for versus/compare scenes
+    if (/\b(compar|versus|vs\.?|difference|alternative)\b/i.test(scene.title)) {
+      const comparison = detectComparisonContent(repository)
+      if (comparison) {
+        comparison.left.forEach(add)
+        comparison.right.forEach(add)
+      }
+    }
+    // Smart detection: Add metrics for performance/benchmark scenes
+    if (/\b(performance|benchmark|metric|speed|fast|efficiency)\b/i.test(scene.title)) {
+      detectMetricsBenchmarks(repository).forEach(add)
+    }
   }
   ;(repository?.topics ?? []).forEach((topic) => add(topic.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())))
   if (repository?.description) add(repository.description)
   return pool
+}
+
+// Smart content detection: Parse package.json for installation commands
+function detectInstallationInstructions(repository: Repository | null): string[] {
+  if (!repository) return []
+  const instructions: string[] = []
+  const packageJsonMatch = repository.readme.match(/```(?:json)?\s*\n({[\s\S]*?"name"\s*:\s*"[^"]+[\s\S]*?})\s*```/i)
+  if (packageJsonMatch) {
+    try {
+      const pkg = JSON.parse(packageJsonMatch[1])
+      if (pkg.name) instructions.push(`Install with npm install ${pkg.name}`)
+      if (pkg.name) instructions.push(`Install with yarn add ${pkg.name}`)
+    } catch {
+      // Invalid JSON
+    }
+  }
+  // Look for installation commands in readme
+  const installMatch = repository.readme.match(/(?:npm|yarn|pip|cargo|go get)\s+(?:install\s+)?(?:add\s+)?[-@\w/.]+/gi)
+  if (installMatch) {
+    installMatch.slice(0, 3).forEach((cmd) => instructions.push(cmd))
+  }
+  return instructions
+}
+
+// Smart content detection: Identify tutorial structure (numbered steps, ordered lists)
+function detectTutorialStructure(repository: Repository | null): string[] {
+  if (!repository) return []
+  const steps: string[] = []
+  const content = `${repository.readme}\n${repository.documentation}`
+  // Find numbered steps (1. First step, 2. Second step, etc.)
+  const numberedSteps = content.match(/^\s*\d+\.\s+.+$/gm)
+  if (numberedSteps && numberedSteps.length >= 3) {
+    numberedSteps.slice(0, 5).forEach((step) => {
+      const cleaned = cleanRepositoryProse(step.replace(/^\s*\d+\.\s*/, ''))
+      if (cleaned.length >= 10 && cleaned.length < 150) steps.push(cleaned)
+    })
+  }
+  // Find "Step N" or "Stage N" patterns
+  const stepPatterns = content.match(/(?:step|stage|phase)\s+\d+[\s:]+[^\n]{10,100}/gi)
+  if (stepPatterns) {
+    stepPatterns.slice(0, 5).forEach((pattern) => {
+      const cleaned = cleanRepositoryProse(pattern)
+      if (cleaned && !steps.includes(cleaned)) steps.push(cleaned)
+    })
+  }
+  return steps
+}
+
+// Smart content detection: Find comparison tables or versus content
+function detectComparisonContent(repository: Repository | null): { left: string[]; right: string[] } | null {
+  if (!repository) return null
+  const content = `${repository.readme}\n${repository.documentation}`
+  // Look for "vs", "versus", "compared to" patterns
+  const vsMatch = content.match(/(?:^|\n)([^\n]+)\s+(?:vs\.?|versus)\s+([^\n]+)/gi)
+  if (vsMatch && vsMatch.length > 0) {
+    const comparisons = vsMatch.slice(0, 2).map((match) => {
+      const parts = match.split(/\s+(?:vs\.?|versus)\s+/i)
+      return { left: cleanRepositoryProse(parts[0] || ''), right: cleanRepositoryProse(parts[1] || '') }
+    })
+    return {
+      left: comparisons.map((c) => c.left).filter(Boolean),
+      right: comparisons.map((c) => c.right).filter(Boolean),
+    }
+  }
+  // Look for markdown tables with two columns
+  const tableMatch = content.match(/\|[^\n]+\|[^\n]+\|\s*\n\|[-:\s|]+\|\s*\n(?:\|[^\n]+\|[^\n]+\|\s*\n){2,}/g)
+  if (tableMatch) {
+    const rows = tableMatch[0].split('\n').slice(2).map((row) => {
+      const cells = row.split('|').map((cell) => cleanRepositoryProse(cell)).filter(Boolean)
+      return { left: cells[0], right: cells[1] }
+    })
+    return {
+      left: rows.map((r) => r.left).filter(Boolean).slice(0, 4),
+      right: rows.map((r) => r.right).filter(Boolean).slice(0, 4),
+    }
+  }
+  return null
+}
+
+// Smart content detection: Locate metrics and benchmarks
+function detectMetricsBenchmarks(repository: Repository | null): string[] {
+  if (!repository) return []
+  const metrics: string[] = []
+  const content = `${repository.readme}\n${repository.documentation}`
+  // Find percentages, numbers with units, performance metrics
+  const metricPatterns = content.match(/\d+(?:\.\d+)?(?:\s?(?:%|x|ms|sec|seconds?|kb|mb|gb|faster|slower|improvement|speedup|throughput))/gi)
+  if (metricPatterns) {
+    const uniqueMetrics = [...new Set(metricPatterns)].slice(0, 6)
+    uniqueMetrics.forEach((metric) => {
+      // Find the sentence containing this metric
+      const sentenceMatch = content.match(new RegExp(`[^.!?]*${metric.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^.!?]*[.!?]`, 'i'))
+      if (sentenceMatch) {
+        const sentence = cleanRepositoryProse(sentenceMatch[0])
+        if (sentence.length >= 15 && sentence.length < 180 && isNarratableText(sentence)) {
+          metrics.push(sentence)
+        }
+      }
+    })
+  }
+  return metrics
 }
 
 function shortNarrationForScene(scene: Scene, repository: Repository | null): string {
