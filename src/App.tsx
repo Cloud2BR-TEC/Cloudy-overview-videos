@@ -289,6 +289,10 @@ function topicOverlap(value: string, topic: string) {
   if (!valueWords.size || !topicWords.size) return 0
   return Array.from(topicWords).filter((word) => valueWords.has(word)).length / topicWords.size
 }
+function sharedContentWordCount(left: string, right: string) {
+  const leftWords = contentWords(left)
+  return Array.from(contentWords(right)).filter((word) => leftWords.has(word)).length
+}
 function hasDuplicateContent(candidate: string, existing: readonly string[]) {
   const normalized = normalizedSentence(candidate)
   return !normalized || existing.some((item) => {
@@ -328,8 +332,8 @@ function extractBullets(narration: string): string[] {
 function shortContentPool(scene: Scene, repository: Repository | null): string[] {
   const pool: string[] = []
   const add = (raw: string) => {
-    const text = raw.trim().replace(/\s+/g, ' ')
-    if (text.length < 14 || text.length > 220) return
+    const text = cleanRepositoryProse(raw)
+    if (text.length < 14 || text.length > 220 || !isNarratableText(text)) return
     if (hasDuplicateContent(text, pool)) return
     pool.push(text)
   }
@@ -346,7 +350,7 @@ function shortContentPool(scene: Scene, repository: Repository | null): string[]
   if (repository) {
     const sceneEvidence = `${scene.title}. ${scene.narration} ${scene.supportingPoints.join(' ')}`
     const repositoryEvidence = rankedEvidenceSentences(sceneEvidence, `${repository.documentation}\n${repository.readme}`, scene.title, scene.assetLabel)
-      .filter((point) => topicOverlap(point, scene.title) >= 0.2 || topicOverlap(point, scene.narration) >= 0.2)
+      .filter((point) => sharedContentWordCount(point, scene.title) >= 1 || sharedContentWordCount(point, scene.narration) >= 2)
       .slice(0, 8)
     repositoryEvidence.forEach(add)
   }
@@ -356,7 +360,7 @@ function shortContentPool(scene: Scene, repository: Repository | null): string[]
 }
 
 function shortNarrationForScene(scene: Scene, repository: Repository | null): string {
-  const narration = scene.narration.trim().replace(/\s+/g, ' ')
+  const narration = cleanRepositoryProse(scene.narration)
   if (narration) {
     const sentences = narration.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [narration]
     return uniqueContentPoints(sentences, [scene.title]).join(' ') || scene.title.trim()
@@ -364,9 +368,13 @@ function shortNarrationForScene(scene: Scene, repository: Repository | null): st
   return shortContentPool(scene, repository).slice(0, 3).join(' ') || scene.title.trim() || repository?.description?.trim() || 'Repository overview'
 }
 
+function shortTitleForScene(scene: Scene) {
+  return cleanRepositoryProse(scene.title) || 'Repository insight'
+}
+
 function shortSpokenText(scene: Scene, layout: ShortTemplateLayout, repository: Repository | null): string {
   const narration = shortNarrationForScene(scene, repository)
-  const parts = uniqueContentPoints([scene.title, narration, ...shortItemsForLayout(scene, layout, repository)])
+  const parts = uniqueContentPoints([shortTitleForScene(scene), narration, ...shortItemsForLayout(scene, layout, repository)])
   return parts.join('. ').replace(/\.{2,}/g, '.')
 }
 
@@ -415,7 +423,7 @@ function concatenateAudioBuffers(audioContext: AudioContext, buffers: AudioBuffe
 }
 
 function formatShortPoint(point: string, format: ShortTemplateLayout['format'], index: number) {
-  const clean = point.replace(/^[\s>*#`\-+\d.)]+/, '').replace(/[.!?]+$/, '').trim()
+  const clean = cleanRepositoryProse(point).replace(/^[\s>*#`\-+\d.)]+/, '').replace(/[.!?]+$/, '').trim()
   if (format === 'caption') return limitWords(clean, 9)
   if (format === 'code') return limitWords(clean.replace(/^run\s+/i, ''), 12)
   if (format === 'metric') {
@@ -641,9 +649,27 @@ function isRepositoryNoise(value: string) {
     /^[\s\-=_]{3,}$/.test(text)
   )
 }
+function cleanRepositoryProse(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[([^\]]*)]\([^)]+\)/g, '$1 ')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*(?:[-+*]|\d+[.)])\s+/gm, '')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\b[^\s)]+\.svg\)?/gi, ' ')
+    .replace(/\b(?:svg|path|rect|circle|viewBox|xmlns|fill|stroke|width|height)\s*[=:)]?/gi, ' ')
+    .replace(/[*_`|{}[\]\\]/g, ' ')
+    .replace(/\s+[),;:](?=\s|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 function isNarratableText(value: string) {
-  const text = value.replace(/\s+/g, ' ').trim()
-  return text.split(/\s+/).length >= 4 && !isRepositoryNoise(text)
+  const text = cleanRepositoryProse(value)
+  const words = text.split(/\s+/).filter(Boolean)
+  return words.length >= 4 && words.every((word) => word.length <= 45) && !isRepositoryNoise(text) && !/[<>]|\b(?:svg|viewBox|xmlns)\b/i.test(text)
 }
 function parseReadmeSections(readme: string): Array<{ heading: string; body: string; imageLabels: string[] }> {
   const text = readme
@@ -761,9 +787,9 @@ function rankedEvidenceSentences(primaryText: string, repositoryText: string, sl
   const primaryEvidence = new Set(
     (primaryText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? []).map((sentence) => normalizedSentence(sentence)),
   )
-  const sentences = `${primaryText} ${repositoryText}`
+  const sentences = cleanRepositoryProse(`${primaryText}\n${repositoryText}`)
     .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
-    ?.map((sentence) => sentence.trim())
+    ?.map((sentence) => cleanRepositoryProse(sentence))
     .filter(isNarratableText)
     .filter((sentence) => {
       const key = normalizedSentence(sentence)
@@ -864,7 +890,7 @@ function buildScenes(repo: Repository): Scene[] {
   const usedEvidence: string[] = []
   for (const material of uniqueCandidates) {
     if (result.length === 50) break
-    const title = cleanSlideTitle(material.heading)
+    const title = cleanRepositoryProse(cleanSlideTitle(material.heading))
     const evidence = selectDistinctEvidence(material.body, repositoryText, title, 'No repository visual selected', usedEvidence)
     if (!evidence) continue
     const assetSelection = chooseRelevantAsset(repo.assets, material.imageLabels)
@@ -2382,7 +2408,7 @@ function App() {
         })
         if (!layout.noTitlePlate) drawZonePlate(...layout.title, layout.dark)
         if (layout.contentPlate) layout.items.forEach((slot) => drawZonePlate(...slot, layout.dark))
-        drawSlotText(scene.title, ...layout.title, titleSize, layout.titleColor, layout.align)
+        drawSlotText(shortTitleForScene(scene), ...layout.title, titleSize, layout.titleColor, layout.align)
         const slotItems = shortItemsForLayout(scene, layout, repository)
         slotItems.forEach((point, index) => {
           const slot = layout.items[index]
@@ -2789,7 +2815,7 @@ function App() {
                   <div className="short-stage-cloudy" style={shortRectStyle(SHORT_CLOUDY_RECT)}>
                     <CloudyAvatar speaking={isShortPreviewPlaying} size={280} />
                   </div>
-                  <h2 className="short-stage-title" data-fit-frac="0.041" data-fit-cap="32" style={{ ...shortRectStyle(activeShortLayout.title), color: activeShortLayout.titleColor }}>{activeShortScene.title}</h2>
+                  <h2 className="short-stage-title" data-fit-frac="0.041" data-fit-cap="32" style={{ ...shortRectStyle(activeShortLayout.title), color: activeShortLayout.titleColor }}>{shortTitleForScene(activeShortScene)}</h2>
                   <div className={`short-stage-content${activeShortLayout.mono ? ' mono' : ''}`}>
                     {activeShortItems.map((bullet, index) => (
                       <p key={`${index}-${bullet}`} data-fit-frac="0.026" data-fit-cap="15" style={{ ...shortRectStyle(activeShortLayout.items[index]), color: activeShortLayout.contentColor, textAlign: activeShortLayout.align }}>{bullet}</p>
