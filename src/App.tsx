@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useRef, useState, useLayoutEffect, type CSSProperties } from 'react'
 import './App.css'
 import CloudyAvatar from './CloudyAvatar'
 
@@ -39,31 +39,36 @@ type ShortTemplateLayout = {
   contentColor: string
   align?: 'left' | 'center'
   mono?: boolean
+  // Plate = subtle backing panel that demarcates a text zone so text always fits legibly on top.
+  dark?: boolean // dark background → dark translucent plate behind light text (else white plate)
+  contentPlate?: boolean // draw plates behind items (for templates whose content area has no built-in card)
+  noTitlePlate?: boolean // template already has a demarcated title area, skip the title plate
 }
 
 const SHORT_NARRATION_RECT: ShortRect = [80, 850, 1760, 160]
-const LEFT_TITLE: ShortRect = [80, 170, 490, 230]
+// Title sits in the left identity column ABOVE Cloudy (avatar centers around y=430), never over it.
+const LEFT_TITLE: ShortRect = [80, 120, 505, 175]
 
 const SHORT_TEMPLATE_LAYOUTS: Record<string, ShortTemplateLayout> = {
-  hero: { title: [680, 235, 1080, 300], items: [[680, 555, 940, 120]], titleColor: '#ffffff', contentColor: '#cceee8' },
-  intro: { title: [640, 160, 1165, 100], items: [[730, 300, 440, 65], [1325, 300, 440, 65], [730, 420, 440, 65], [1325, 420, 440, 65]], titleColor: '#153f39', contentColor: '#244b45' },
+  hero: { title: [660, 300, 1120, 210], items: [[660, 560, 1060, 150]], titleColor: '#ffffff', contentColor: '#cceee8', align: 'center', dark: true, contentPlate: true, noTitlePlate: true },
+  intro: { title: [640, 150, 1165, 90], items: [[640, 285, 570, 92], [1235, 285, 570, 92], [640, 405, 570, 92], [1235, 405, 570, 92]], titleColor: '#153f39', contentColor: '#244b45' },
   presenting: { title: LEFT_TITLE, items: [], media: [[760, 120, 1020, 600]], titleColor: '#17384b', contentColor: '#17384b' },
-  whiteboard: { title: LEFT_TITLE, items: [[700, 285, 195, 105], [1110, 285, 160, 105], [1460, 285, 250, 105], [700, 530, 350, 95], [1330, 530, 380, 95]], titleColor: '#203946', contentColor: '#17384b', align: 'center' },
-  diagram: { title: LEFT_TITLE, items: [[630, 215, 190, 105], [630, 555, 190, 105], [1135, 365, 300, 160], [1715, 215, 60, 105], [1715, 555, 60, 105]], titleColor: '#173c30', contentColor: '#173c30', align: 'center' },
-  timeline: { title: LEFT_TITLE, items: [[630, 220, 240, 115], [910, 570, 240, 115], [1250, 220, 240, 115], [1530, 570, 240, 115]], titleColor: '#f2fdff', contentColor: '#17475b', align: 'center' },
-  comparison: { title: LEFT_TITLE, items: [[680, 330, 425, 300], [1280, 330, 425, 300]], titleColor: '#303f78', contentColor: '#303f78' },
-  quote: { title: LEFT_TITLE, items: [[820, 270, 850, 340]], titleColor: '#5b3425', contentColor: '#5b3425', align: 'center' },
-  stats: { title: LEFT_TITLE, items: [[670, 250, 460, 140], [1270, 250, 460, 140], [670, 540, 460, 140], [1270, 540, 460, 140]], titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
-  code: { title: LEFT_TITLE, items: [[725, 220, 900, 70], [725, 315, 900, 70], [725, 410, 900, 70], [725, 505, 900, 70], [725, 600, 900, 70]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true },
-  terminal: { title: LEFT_TITLE, items: [[675, 220, 980, 70], [675, 315, 980, 70], [675, 410, 980, 70], [675, 505, 980, 70], [675, 600, 980, 70]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true },
-  steps: { title: LEFT_TITLE, items: [[750, 160, 930, 82], [750, 290, 930, 82], [750, 420, 930, 82], [750, 550, 930, 82], [750, 680, 930, 82]], titleColor: '#592a1d', contentColor: '#74341f' },
-  question: { title: LEFT_TITLE, items: [[830, 300, 850, 330]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center' },
-  checklist: { title: LEFT_TITLE, items: [[750, 160, 930, 82], [750, 290, 930, 82], [750, 420, 930, 82], [750, 550, 930, 82], [750, 680, 930, 82]], titleColor: '#17384b', contentColor: '#17384b' },
+  whiteboard: { title: LEFT_TITLE, items: [[690, 300, 215, 105], [1100, 300, 180, 105], [1450, 300, 270, 105], [690, 540, 370, 100], [1320, 540, 400, 100]], titleColor: '#203946', contentColor: '#17384b', align: 'center' },
+  diagram: { title: LEFT_TITLE, items: [[620, 215, 210, 130], [620, 545, 210, 130], [1120, 360, 330, 175]], titleColor: '#173c30', contentColor: '#173c30', align: 'center' },
+  timeline: { title: LEFT_TITLE, items: [[620, 205, 260, 150], [900, 555, 260, 150], [1240, 205, 260, 150], [1520, 555, 260, 150]], titleColor: '#f2fdff', contentColor: '#17475b', align: 'center', dark: true },
+  comparison: { title: LEFT_TITLE, items: [[645, 335, 415, 290], [1245, 335, 415, 290]], titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
+  quote: { title: LEFT_TITLE, items: [[700, 260, 1020, 360]], titleColor: '#eef5f2', contentColor: '#263f3d', align: 'center', dark: true },
+  stats: { title: LEFT_TITLE, items: [[640, 210, 500, 180], [1200, 210, 500, 180], [640, 500, 500, 180], [1200, 500, 500, 180]], titleColor: '#303f78', contentColor: '#303f78', align: 'center' },
+  code: { title: LEFT_TITLE, items: [[725, 215, 940, 66], [725, 290, 940, 66], [725, 365, 940, 66], [725, 440, 940, 66], [725, 515, 940, 66]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
+  terminal: { title: LEFT_TITLE, items: [[700, 215, 960, 66], [700, 290, 960, 66], [700, 365, 960, 66], [700, 440, 960, 66], [700, 515, 960, 66]], titleColor: '#d9f2ef', contentColor: '#a5e0d9', mono: true, dark: true },
+  steps: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], titleColor: '#592a1d', contentColor: '#74341f' },
+  question: { title: LEFT_TITLE, items: [[820, 320, 900, 300]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
+  checklist: { title: LEFT_TITLE, items: [[755, 165, 920, 75], [755, 295, 920, 75], [755, 425, 920, 75], [755, 555, 920, 75], [755, 685, 920, 75]], titleColor: '#17384b', contentColor: '#17384b' },
   gallery: { title: LEFT_TITLE, items: [], media: [[760, 160, 490, 250], [1290, 160, 490, 250], [760, 450, 490, 250], [1290, 450, 490, 250]], titleColor: '#24445a', contentColor: '#24445a' },
-  callout: { title: LEFT_TITLE, items: [[700, 260, 1000, 340]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center' },
-  roadmap: { title: LEFT_TITLE, items: [[630, 535, 180, 110], [870, 300, 180, 110], [1150, 615, 180, 110], [1410, 275, 180, 110], [1635, 470, 180, 110]], titleColor: '#ffffff', contentColor: '#34215b', align: 'center' },
-  recap: { title: [640, 160, 1150, 90], items: [[690, 285, 460, 130], [1280, 285, 460, 130], [690, 495, 460, 130], [1280, 495, 460, 130]], titleColor: '#603419', contentColor: '#603419' },
-  outro: { title: [890, 300, 680, 210], items: [[990, 535, 480, 120]], titleColor: '#ffffff', contentColor: '#e8dcff', align: 'center' },
+  callout: { title: LEFT_TITLE, items: [[700, 270, 1000, 340]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
+  roadmap: { title: LEFT_TITLE, items: [[580, 560, 220, 95], [860, 300, 220, 95], [1140, 640, 220, 95], [1400, 275, 220, 95], [1620, 420, 220, 95]], titleColor: '#ffffff', contentColor: '#ffffff', align: 'center', dark: true, contentPlate: true },
+  recap: { title: [640, 150, 1150, 90], items: [[690, 285, 460, 130], [1280, 285, 460, 130], [690, 495, 460, 130], [1280, 495, 460, 130]], titleColor: '#603419', contentColor: '#603419' },
+  outro: { title: [890, 300, 700, 200], items: [[990, 535, 500, 120]], titleColor: '#ffffff', contentColor: '#e8dcff', align: 'center', dark: true, contentPlate: true, noTitlePlate: true },
 }
 
 function shortRectStyle([x, y, width, height]: ShortRect): CSSProperties {
@@ -856,6 +861,33 @@ function App() {
   const activeShortLayout = SHORT_TEMPLATE_LAYOUTS[activeShortTemplate.key]
   const activeShortAssets = activeShortScene.assets.length ? activeShortScene.assets.slice(0, 4) : activeShortScene.asset ? [activeShortScene.asset] : []
   const activeShortBullets = (activeShortScene.bullets.length ? activeShortScene.bullets : extractBullets(activeShortScene.narration)).slice(0, 5)
+  // Auto-fit every preview text zone: shrink font until the text fits its shape (never clips/overflows).
+  const shortStageRef = useRef<HTMLElement | null>(null)
+  const shortBulletsKey = activeShortBullets.join('|')
+  useLayoutEffect(() => {
+    const stage = shortStageRef.current
+    if (!stage) return
+    const fitAll = () => {
+      const stageHeight = stage.clientHeight
+      if (!stageHeight) return
+      stage.querySelectorAll<HTMLElement>('[data-fit-frac]').forEach((element) => {
+        const frac = Number(element.dataset.fitFrac)
+        const cap = Number(element.dataset.fitCap ?? 40)
+        let size = Math.min(cap, Math.max(7, stageHeight * frac))
+        element.style.fontSize = `${size}px`
+        let guard = 0
+        while ((element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1) && size > 5 && guard < 260) {
+          size -= 0.5
+          element.style.fontSize = `${size}px`
+          guard += 1
+        }
+      })
+    }
+    fitAll()
+    const observer = new ResizeObserver(fitAll)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [activeShortTemplate.key, shortPreviewBeatIdx, activeShortScene.title, activeShortScene.narration, shortBulletsKey])
   const shortAssetEntries = [
     { kind: 'cloudy', name: 'Cloudy', detail: 'Protagonist — flies through each world', image: null },
     { kind: 'concept', name: shortTopic.title, detail: 'Topic environment theme', image: null },
@@ -2060,8 +2092,8 @@ function App() {
 
       if (tpl) {
         // Loaded SVG templates own the composition. Populate their purpose-built slots directly.
-        const drawSlotText = (text: string, x: number, y: number, width: number, height: number, maxSize = 36, color = '#17384b', align: CanvasTextAlign = 'left') => {
-          const layout = fitCanvasText(ctx, text, width, height, maxSize, 16, '700')
+        const drawSlotText = (text: string, x: number, y: number, width: number, height: number, maxSize = 36, color = '#17384b', align: CanvasTextAlign = 'left', minSize = 12) => {
+          const layout = fitCanvasText(ctx, text, width, height, maxSize, minSize, '700')
           ctx.save()
           ctx.globalAlpha = eased
           ctx.fillStyle = color
@@ -2081,9 +2113,24 @@ function App() {
           drawContainImage(ctx, image, x, y, width, height)
           ctx.restore()
         }
+        // Subtle backing panel that demarcates a text zone so text always fits legibly.
+        const drawZonePlate = (x: number, y: number, width: number, height: number, dark?: boolean) => {
+          ctx.save()
+          ctx.globalAlpha = eased
+          ctx.beginPath()
+          ctx.roundRect(x, y, width, height, 22)
+          ctx.fillStyle = dark ? 'rgba(7, 18, 30, 0.46)' : 'rgba(255, 255, 255, 0.74)'
+          ctx.fill()
+          ctx.lineWidth = 2
+          ctx.strokeStyle = dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(20, 45, 65, 0.12)'
+          ctx.stroke()
+          ctx.restore()
+        }
         const key = selectedTemplate.key
         const layout = SHORT_TEMPLATE_LAYOUTS[key]
         const titleSize = layout.title[2] > 700 ? 64 : 48
+        if (!layout.noTitlePlate) drawZonePlate(...layout.title, layout.dark)
+        if (layout.contentPlate) layout.items.forEach((slot) => drawZonePlate(...slot, layout.dark))
         drawSlotText(scene.title, ...layout.title, titleSize, layout.titleColor, layout.align)
         layout.media?.forEach((slot, index) => {
           const image = sceneAssetImages[index]
@@ -2441,20 +2488,26 @@ function App() {
                 </label>
               </section>
               <section className="shorts-production-grid">
-                <article className={`short-stage template-${activeShortTemplate.key}`} aria-label={`Cloudy Short preview: ${shortTopic.title}`}>
+                <article ref={shortStageRef} className={`short-stage template-${activeShortTemplate.key}`} aria-label={`Cloudy Short preview: ${shortTopic.title}`}>
                   <img className="short-stage-template" src={activeShortTemplate.url} alt="" aria-hidden="true" />
+                  <div className="short-stage-plates" aria-hidden="true">
+                    {!activeShortLayout.noTitlePlate && <span className={`zone-plate ${activeShortLayout.dark ? 'dark' : 'light'}`} style={shortRectStyle(activeShortLayout.title)} />}
+                    {activeShortLayout.contentPlate && activeShortBullets.slice(0, activeShortLayout.items.length).map((_, index) => (
+                      <span key={index} className={`zone-plate ${activeShortLayout.dark ? 'dark' : 'light'}`} style={shortRectStyle(activeShortLayout.items[index])} />
+                    ))}
+                  </div>
                   <div className="short-stage-media" aria-label="Repository visuals">
                     {activeShortAssets.slice(0, activeShortLayout.media?.length ?? 0).map((asset, index) => (
                       <img key={asset} src={asset} alt={`${activeShortScene.assetLabel} ${index + 1}`} style={shortRectStyle(activeShortLayout.media?.[index] ?? [0, 0, 0, 0])} />
                     ))}
                   </div>
-                  <h2 className="short-stage-title" style={{ ...shortRectStyle(activeShortLayout.title), color: activeShortLayout.titleColor }}>{activeShortScene.title}</h2>
+                  <h2 className="short-stage-title" data-fit-frac="0.041" data-fit-cap="32" style={{ ...shortRectStyle(activeShortLayout.title), color: activeShortLayout.titleColor }}>{activeShortScene.title}</h2>
                   <div className={`short-stage-content${activeShortLayout.mono ? ' mono' : ''}`}>
                     {activeShortBullets.slice(0, activeShortLayout.items.length).map((bullet, index) => (
-                      <p key={`${index}-${bullet}`} style={{ ...shortRectStyle(activeShortLayout.items[index]), color: activeShortLayout.contentColor, textAlign: activeShortLayout.align }}>{bullet}</p>
+                      <p key={`${index}-${bullet}`} data-fit-frac="0.026" data-fit-cap="15" style={{ ...shortRectStyle(activeShortLayout.items[index]), color: activeShortLayout.contentColor, textAlign: activeShortLayout.align }}>{bullet}</p>
                     ))}
                   </div>
-                  <div className="short-stage-narration" style={shortRectStyle(SHORT_NARRATION_RECT)}>
+                  <div className="short-stage-narration" data-fit-frac="0.022" data-fit-cap="14" style={shortRectStyle(SHORT_NARRATION_RECT)}>
                     <p>{activeShortScene.narration ?? shortNarration}</p>
                   </div>
                   <span className="shorts-watermark" aria-hidden="true">Cloud2BR</span>

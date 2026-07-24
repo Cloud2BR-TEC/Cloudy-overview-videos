@@ -208,15 +208,19 @@
 .shorts-controls select { min-width: 0; padding: 10px 32px 10px 10px; border: 1px solid #6f99b1; border-radius: 4px; background: #f7fbfd; color: #102f43; font: 700 12px 'Manrope', sans-serif; }
 .shorts-runtime { padding: 8px; color: #15543d; background: #ccebdd; border: 1px solid #55a987; border-radius: 4px; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .shorts-production-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(220px, .48fr); align-items: start; gap: 16px; margin-top: 24px; }
-.short-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; justify-self: center; overflow: hidden; border: 1px solid #315f78; border-radius: 7px; background: #113d59; box-shadow: 0 12px 24px rgba(20, 63, 87, .16); }
+.short-stage { position: relative; container-type: size; width: 100%; aspect-ratio: 16 / 9; justify-self: center; overflow: hidden; border: 1px solid #315f78; border-radius: 7px; background: #113d59; box-shadow: 0 12px 24px rgba(20, 63, 87, .16); }
 .short-stage-template { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.short-stage-title, .short-stage-narration { position: absolute; z-index: 1; box-sizing: border-box; }
-.short-stage-title { margin: 0; font-size: clamp(15px, 2vw, 29px); line-height: 1.08; overflow-wrap: anywhere; }
+.short-stage-plates { position: absolute; z-index: 1; inset: 0; }
+.zone-plate { position: absolute; box-sizing: border-box; border-radius: 2.6cqh; }
+.zone-plate.dark { background: rgba(7, 18, 30, .46); border: 1px solid rgba(255, 255, 255, .12); }
+.zone-plate.light { background: rgba(255, 255, 255, .74); border: 1px solid rgba(20, 45, 65, .12); }
+.short-stage-title, .short-stage-narration { position: absolute; z-index: 2; box-sizing: border-box; }
+.short-stage-title { margin: 0; display: grid; align-content: center; font-size: clamp(11px, 4.1cqh, 32px); font-weight: 800; line-height: 1.06; overflow: hidden; overflow-wrap: anywhere; }
 .short-stage-content, .short-stage-media { position: absolute; z-index: 1; inset: 0; }
 .short-stage-content p, .short-stage-media img { position: absolute; box-sizing: border-box; margin: 0; overflow: hidden; }
-.short-stage-content p { display: grid; align-content: center; padding: 4px 8px; font-size: clamp(8px, .9vw, 13px); line-height: 1.28; overflow-wrap: anywhere; }
-.short-stage-content.mono p { font-family: 'DM Mono', monospace; }
-.short-stage-narration { padding: 45px 28px 10px 52px; overflow-y: auto; color: #e8f4f8; font-size: clamp(8px, .85vw, 13px); line-height: 1.4; scrollbar-width: thin; }
+.short-stage-content p { display: grid; align-content: center; padding: 2px 6px; font-size: clamp(7px, 2.5cqh, 15px); font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.short-stage-content.mono p { font-family: 'DM Mono', monospace; font-weight: 500; }
+.short-stage-narration { padding: 7cqh 3cqw 1cqh 3.4cqw; overflow: hidden; color: #e8f4f8; font-size: clamp(7px, 2.1cqh, 14px); line-height: 1.35; }
 .short-stage-narration p { margin: 0; }
 .short-stage-media img { padding: 8px; border-radius: 6px; background: #f8fcff; object-fit: contain; }
 .short-stage.template-gallery .short-stage-media img { object-fit: cover; }
